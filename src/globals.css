@@ -42,9 +42,18 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: rgb(var(--border));
   }
   body {
-    @apply bg-[rgb(var(--background))] text-[rgb(var(--foreground))];
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
   }
+}
+
+.filter-orange {
+  filter: invert(56%) sepia(98%) saturate(354%) hue-rotate(349deg) brightness(98%) contrast(94%);
+}
+
+.filter-red {
+  filter: invert(37%) sepia(93%) saturate(747%) hue-rotate(331deg) brightness(91%) contrast(96%);
 }
