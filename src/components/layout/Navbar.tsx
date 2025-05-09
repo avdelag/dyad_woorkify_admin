@@ -11,18 +11,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"; // For mobile sidebar
-import { SidebarNav } from './Sidebar'; // Assuming Sidebar content is refactored
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext'; // Asumiendo que AuthContext exporta useAuth
+import { cn } from '@/lib/utils'; // Importar cn
 
 export const Navbar = ({ toggleMobileSidebar, isMobileSidebarOpen }: { toggleMobileSidebar: () => void; isMobileSidebarOpen: boolean; }) => {
   const { theme, setTheme } = useTheme();
+  const { setIsAuthenticated } = useAuth(); // Obtener setIsAuthenticated del contexto
+  const navigate = useNavigate();
   const adminName = "Admin"; // Placeholder
+
+  const handleLogout = () => {
+    setIsAuthenticated(false); // Simular cierre de sesión
+    navigate('/auth/login');
+  };
 
   return (
     <header className="bg-card border-b shadow-sm sticky top-0 z-30">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          {/* Mobile Sidebar Toggle */}
           <Button variant="ghost" size="icon" className="md:hidden" onClick={toggleMobileSidebar}>
             {isMobileSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </Button>
@@ -51,10 +58,17 @@ export const Navbar = ({ toggleMobileSidebar, isMobileSidebarOpen }: { toggleMob
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Profile</DropdownMenuItem>
-              <DropdownMenuItem>Settings</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/dashboard/profile')}>
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/dashboard/settings')}>
+                Settings
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive hover:!bg-destructive/10 hover:!text-destructive">
+              <DropdownMenuItem 
+                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                onClick={handleLogout}
+              >
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </DropdownMenuItem>

@@ -3,14 +3,15 @@ import LandingPage from './pages/LandingPage';
 import AdminSecret from './pages/AdminSecret';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
-// Import DashboardLayout
 import { DashboardLayout } from './components/layout/DashboardLayout'; 
-// Import new dashboard pages
 import DashboardOverview from './pages/dashboard/Overview';
 import DashboardUsers from './pages/dashboard/Users';
 import DashboardVendors from './pages/dashboard/Vendors';
 import DashboardStatistics from './pages/dashboard/Statistics';
 import DashboardSettings from './pages/dashboard/Settings';
+import DashboardMessages from './pages/dashboard/Messages';
+import DashboardProfile from './pages/dashboard/Profile';
+import NotFoundPage from './pages/NotFound'; // Importar NotFoundPage
 
 import { Toaster } from 'react-hot-toast';
 
@@ -24,14 +25,16 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         
-        {/* Dashboard Routes */}
         <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route index element={<DashboardOverview />} /> {/* Default for /dashboard */}
+          <Route index element={<DashboardOverview />} />
           <Route path="users" element={<DashboardUsers />} />
           <Route path="vendors" element={<DashboardVendors />} />
           <Route path="statistics" element={<DashboardStatistics />} />
+          <Route path="messages" element={<DashboardMessages />} />
+          <Route path="profile" element={<DashboardProfile />} />
           <Route path="settings" element={<DashboardSettings />} />
         </Route>
+        <Route path="*" element={<NotFoundPage />} /> {/* Ruta para 404 */}
       </Routes>
     </>
   );
