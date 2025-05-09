@@ -1,8 +1,8 @@
-"use client"; // Keep this if you plan to use Next.js specific features, otherwise remove for Vite
+"use client";
 import React from 'react';
-import { Moon, Sun, UserCircle, LogOut } from 'lucide-react';
+import { Moon, Sun, UserCircle, LogOut, Menu, X } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { Button } from '@/components/ui/button'; // Assuming you have a Button component
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,19 +10,28 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"; // Assuming shadcn/ui dropdown
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"; // For mobile sidebar
+import { SidebarNav } from './Sidebar'; // Assuming Sidebar content is refactored
 
-export const Navbar = () => {
+export const Navbar = ({ toggleMobileSidebar, isMobileSidebarOpen }: { toggleMobileSidebar: () => void; isMobileSidebarOpen: boolean; }) => {
   const { theme, setTheme } = useTheme();
-  const adminName = "Admin User"; // Placeholder
+  const adminName = "Admin"; // Placeholder
 
   return (
-    <nav className="bg-background border-b shadow-sm sticky top-0 z-50">
+    <header className="bg-card border-b shadow-sm sticky top-0 z-30">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="text-2xl font-bold text-primary">
-          Woorkify
+        <div className="flex items-center gap-4">
+          {/* Mobile Sidebar Toggle */}
+          <Button variant="ghost" size="icon" className="md:hidden" onClick={toggleMobileSidebar}>
+            {isMobileSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </Button>
+          <div className="text-2xl font-bold text-brand-orange">
+            Woorkify
+          </div>
         </div>
-        <div className="flex items-center space-x-4">
+        
+        <div className="flex items-center space-x-3">
           <Button
             variant="ghost"
             size="icon"
@@ -34,22 +43,18 @@ export const Navbar = () => {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center space-x-2">
+              <Button variant="ghost" className="flex items-center space-x-2 px-2">
                 <UserCircle className="h-6 w-6" />
-                <span>{adminName}</span>
+                <span className="hidden sm:inline">{adminName}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                Settings
-              </DropdownMenuItem>
+              <DropdownMenuItem>Profile</DropdownMenuItem>
+              <DropdownMenuItem>Settings</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-500 hover:!text-red-600">
+              <DropdownMenuItem className="text-destructive hover:!bg-destructive/10 hover:!text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </DropdownMenuItem>
@@ -57,6 +62,6 @@ export const Navbar = () => {
           </DropdownMenu>
         </div>
       </div>
-    </nav>
+    </header>
   );
 };

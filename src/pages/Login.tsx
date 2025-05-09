@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -9,9 +12,10 @@ export default function Login() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // Basic validation, replace with actual auth logic
     if (email && password) {
+      // Mock login success
       toast.success('Login successful!')
+      // In a real app, you'd set some auth state here
       navigate('/dashboard')
     } else {
       toast.error('Please fill all fields')
@@ -19,45 +23,45 @@ export default function Login() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="p-8 bg-white rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6">Login</h1>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block mb-2 text-sm font-medium">Email</label>
-            <input
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-brand-orange to-orange-400 p-4">
+      <div className="w-full max-w-md bg-card p-8 rounded-xl shadow-2xl">
+        <h1 className="text-3xl font-bold text-center text-foreground mb-2">Welcome Back!</h1>
+        <p className="text-center text-muted-foreground mb-8">Login to access your admin dashboard.</p>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full p-2 border rounded"
-              placeholder="your@email.com"
+              placeholder="you@example.com"
               required
+              className="mt-1"
             />
           </div>
-          <div className="mb-6">
-            <label className="block mb-2 text-sm font-medium">Password</label>
-            <input
+          <div>
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-2 border rounded"
               placeholder="••••••••"
               required
+              className="mt-1"
             />
           </div>
-          <button
-            type="submit"
-            className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition mb-4"
-          >
-            Login
-          </button>
-          <p className="text-sm text-center">
-            Don't have an account?{' '}
-            <Link to="/signup" className="text-blue-600 hover:underline">
-              Sign up
-            </Link>
-          </p>
+          <Button type="submit" className="w-full bg-brand-orange hover:bg-orange-600 text-white text-lg py-3">
+            Log In
+          </Button>
         </form>
+        <p className="mt-8 text-sm text-center text-muted-foreground">
+          Don't have an account?{' '}
+          <Link to="/signup" className="font-medium text-brand-orange hover:underline">
+            Sign up
+          </Link>
+        </p>
       </div>
     </div>
   )

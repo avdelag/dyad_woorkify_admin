@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 export default function AdminSecret() {
   const [code, setCode] = useState('')
@@ -9,35 +12,34 @@ export default function AdminSecret() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (code === 'ADMIN2025') {
-      toast.success('Code accepted!')
+      toast.success('Code accepted! Redirecting to login...')
       navigate('/login')
     } else {
-      toast.error('Invalid code!')
+      toast.error('Invalid admin code!')
     }
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <div className="p-8 bg-white rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6">Admin Access</h1>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block mb-2 text-sm font-medium">Admin Code</label>
-            <input
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 p-4">
+      <div className="w-full max-w-md bg-gray-800 p-8 rounded-xl shadow-2xl">
+        <h1 className="text-3xl font-bold text-center text-white mb-2">Admin Verification</h1>
+        <p className="text-center text-gray-400 mb-8">Enter the secret code to proceed.</p>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <Label htmlFor="adminCode" className="text-gray-300">Admin Code</Label>
+            <Input
+              id="adminCode"
               type="password"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="w-full p-2 border rounded"
-              placeholder="Enter admin code"
+              placeholder="Enter secret code"
               required
+              className="mt-1 bg-gray-700 text-white border-gray-600 focus:border-brand-orange focus:ring-brand-orange"
             />
           </div>
-          <button
-            type="submit"
-            className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-          >
-            Submit
-          </button>
+          <Button type="submit" className="w-full bg-brand-orange hover:bg-orange-600 text-white text-lg py-3">
+            Verify Code
+          </Button>
         </form>
       </div>
     </div>
