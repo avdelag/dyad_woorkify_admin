@@ -1,10 +1,11 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Briefcase, ShoppingCart, DollarSign, LucideIcon, MessageCircle } from 'lucide-react'; // Added MessageCircle
+import { Users, Briefcase, ShoppingCart, DollarSign, LucideIcon, MessageCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'react-hot-toast';
 import P5Sketch from '@/components/P5Sketch';
+import { cn } from '@/lib/utils'; // Asegurarse de que cn esté importado
 
 interface StatCardProps {
   title: string;
@@ -12,13 +13,13 @@ interface StatCardProps {
   icon: LucideIcon;
   iconColor?: string;
   isLoading: boolean;
-  gradient?: string; // For gradient background
+  gradient?: string;
 }
 
 const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, iconColor = "text-white/80", isLoading, gradient }) => (
   <Card className={cn(
-    "shadow-xl hover:shadow-2xl smooth-hover overflow-hidden text-white/90 hover:scale-105 transform transition-all duration-300",
-    gradient || "bg-card/70 backdrop-blur-sm border-border/30"
+    "shadow-xl hover:shadow-2xl smooth-hover text-white/90 hover:scale-105 transform transition-all duration-300",
+    gradient || "bg-card/70 backdrop-blur-sm border-border/30" // Mantenemos el estilo de tarjeta anterior
   )}>
     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-4">
       <CardTitle className="text-sm font-medium text-white/70">{title}</CardTitle>
@@ -36,11 +37,11 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, iconColor
 
 export default function DashboardOverview() {
   const [stats, setStats] = useState({
-    totalClients: 0, // Changed from totalUsers
+    totalClients: 0,
     totalVendors: 0,
     ordersToday: 0,
     earningsThisWeek: 0,
-    messagesToday: 0, // New stat
+    messagesToday: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -56,7 +57,6 @@ export default function DashboardOverview() {
         oneWeekAgo.setDate(todayStart.getDate() - 7);
         const oneWeekAgoISO = oneWeekAgo.toISOString();
 
-        // Total Clients
         const { count: clientsCount, error: clientsError } = await supabase
           .from('profiles')
           .select('*', { count: 'exact', head: true })
@@ -64,31 +64,27 @@ export default function DashboardOverview() {
           .eq('is_admin', false);
         if (clientsError) throw clientsError;
 
-        // Total Vendors
         const { count: vendorsCount, error: vendorsError } = await supabase
           .from('profiles')
           .select('*', { count: 'exact', head: true })
           .eq('is_vendor', true);
         if (vendorsError) throw vendorsError;
         
-        // Orders Today
         const { count: ordersTodayCount, error: ordersTodayError } = await supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .gte('created_at', todayISO);
         if (ordersTodayError) throw ordersTodayError;
 
-        // Earnings This Week (using 'amount' from orders table)
         const { data: weeklyOrders, error: weeklyOrdersError } = await supabase
           .from('orders')
-          .select('amount') // Changed from total_price to amount
+          .select('amount')
           .gte('created_at', oneWeekAgoISO)
-          .eq('status', 'paid'); // Consider only paid orders for earnings
+          .eq('status', 'paid'); 
         if (weeklyOrdersError) throw weeklyOrdersError;
         
         const totalEarnings = weeklyOrders?.reduce((sum, order) => sum + (order.amount || 0), 0) || 0;
 
-        // Messages Today
         const { count: messagesTodayCount, error: messagesTodayError } = await supabase
           .from('contact_messages')
           .select('id', { count: 'exact', head: true })
@@ -112,14 +108,13 @@ export default function DashboardOverview() {
 
     fetchStats();
 
-    // Real-time listeners
-    const profilesChannel = supabase.channel('public:profiles:overview')
+    const profilesChannel = supabase.channel('public:profiles:overview_page_stats')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchStats())
       .subscribe();
-    const ordersChannel = supabase.channel('public:orders:overview')
+    const ordersChannel = supabase.channel('public:orders:overview_page_stats')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchStats())
       .subscribe();
-    const messagesChannel = supabase.channel('public:contact_messages:overview')
+    const messagesChannel = supabase.channel('public:contact_messages:overview_page_stats')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_messages' }, () => fetchStats())
       .subscribe();
       
@@ -132,19 +127,23 @@ export default function DashboardOverview() {
   }, []);
 
   return (
-    <div className="relative min-h-full">
-      <P5Sketch />
+    <div className="relative min-h-full"> {/* Contenedor principal para p5.js y contenido */}
+      <P5Sketch /> {/* Animación de fondo */}
+      
+      {/* Contenido principal con z-index para estar sobre la animación */}
       <div className="relative z-10 space-y-8">
         <div className="text-center md:text-left mb-10 pt-8">
-          <h1 className="text-5xl md:text-6xl drop-shadow-md">
-            <span className="font-extrabold text-brand-orange">Woorkify</span>
-            <span className="font-extrabold text-foreground"> Admin Portal</span>
+          {/* Título actualizado */}
+          <h1 className="text-5xl md:text-6xl font-extrabold drop-shadow-md">
+            <span className="text-brand-orange">Woorkify</span>
+            <span className="text-white"> Admin Portal</span> {/* Usar text-white para asegurar contraste sobre fondo oscuro */}
           </h1>
           <p className="text-muted-foreground mt-2 text-lg">
             Oversee and manage your platform with precision.
           </p>
         </div>
 
+        {/* Tarjetas de estadísticas (ya existentes y estilizadas) */}
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <StatCard title="Clients Registered" value={stats.totalClients} icon={Users} isLoading={isLoading} gradient="bg-gradient-to-br from-blue-500 to-blue-700" />
           <StatCard title="Total Vendors" value={stats.totalVendors} icon={Briefcase} isLoading={isLoading} gradient="bg-gradient-to-br from-purple-500 to-purple-700" />
