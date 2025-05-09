@@ -1,6 +1,6 @@
 "use client";
 import React from 'react';
-import { Moon, Sun, UserCircle, LogOut, Menu, X, Settings, User } from 'lucide-react'; // Added Settings, User
+import { Moon, Sun, UserCircle, LogOut, Menu, X, Settings, User } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +14,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
+import { NotificationBell } from '@/components/dashboard/NotificationBell'; // Importar NotificationBell
 
 export const Navbar = ({ toggleMobileSidebar, isMobileSidebarOpen }: { toggleMobileSidebar: () => void; isMobileSidebarOpen: boolean; }) => {
   const { theme, setTheme } = useTheme();
@@ -22,24 +23,24 @@ export const Navbar = ({ toggleMobileSidebar, isMobileSidebarOpen }: { toggleMob
 
   const handleLogout = async () => {
     await signOut();
-    navigate('/login'); // Redirect after sign out
+    navigate('/login');
   };
 
   return (
     <header className="bg-card/80 backdrop-blur-md border-b border-border/50 sticky top-0 z-30 shadow-lg">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between"> {/* Increased height */}
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" className="md:hidden text-foreground/80 hover:text-foreground smooth-hover" onClick={toggleMobileSidebar}>
             {isMobileSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </Button>
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/dashboard')}>
-            {/* You can add a logo SVG here if you have one */}
             <span className="text-3xl font-extrabold text-brand-orange">Woorkify</span>
             <span className="text-3xl font-extrabold text-foreground">Admin</span>
           </div>
         </div>
         
         <div className="flex items-center space-x-3 sm:space-x-4">
+          <NotificationBell /> {/* Añadir NotificationBell aquí */}
           <Button
             variant="ghost"
             size="icon"
@@ -53,7 +54,7 @@ export const Navbar = ({ toggleMobileSidebar, isMobileSidebarOpen }: { toggleMob
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center space-x-2 px-2 py-1 rounded-full hover:bg-accent/50 smooth-hover">
-                <Avatar className="h-9 w-9"> {/* Slightly larger Avatar */}
+                <Avatar className="h-9 w-9">
                   <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || 'Admin'} />
                   <AvatarFallback className="bg-brand-orange text-primary-foreground">
                     {profile?.full_name ? profile.full_name.substring(0, 1).toUpperCase() : 'A'}
@@ -87,7 +88,7 @@ export const Navbar = ({ toggleMobileSidebar, isMobileSidebarOpen }: { toggleMob
   );
 };
 
-// Dummy Avatar component if not using shadcn/ui Avatar
+// Dummy Avatar component (ya lo tienes)
 const Avatar = ({ children, className }: { children: React.ReactNode, className?: string }) => (
   <div className={cn("relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full", className)}>
     {children}
