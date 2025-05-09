@@ -1,68 +1,77 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { toast } from 'react-hot-toast'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+"use client";
+import { useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Auth } from '@supabase/auth-ui-react';
+import { ThemeSupa } from '@supabase/auth-ui-shared';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/context/AuthContext';
+import { toast } from 'react-hot-toast';
 
 export default function Login() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const navigate = useNavigate()
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { session, isAdmin } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (email && password) {
-      // Mock login success
-      toast.success('Login successful!')
-      // In a real app, you'd set some auth state here
-      navigate('/dashboard')
-    } else {
-      toast.error('Please fill all fields')
+  useEffect(() => {
+    if (session && isAdmin) {
+      navigate('/dashboard', { replace: true });
     }
-  }
+    if (location.state?.error) {
+      toast.error(location.state.error);
+    }
+  }, [session, isAdmin, navigate, location.state]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-brand-orange to-orange-400 p-4">
-      <div className="w-full max-w-md bg-card p-8 rounded-xl shadow-2xl">
-        <h1 className="text-3xl font-bold text-center text-foreground mb-2">Welcome Back!</h1>
-        <p className="text-center text-muted-foreground mb-8">Login to access your admin dashboard.</p>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="mt-1"
-            />
-          </div>
-          <Button type="submit" className="w-full bg-brand-orange hover:bg-orange-600 text-white text-lg py-3">
-            Log In
-          </Button>
-        </form>
-        <p className="mt-8 text-sm text-center text-muted-foreground">
-          Don't have an account?{' '}
-          <Link to="/signup" className="font-medium text-brand-orange hover:underline">
-            Sign up
-          </Link>
-        </p>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 p-4">
+      <div className="w-full max-w-md bg-gray-800 p-8 rounded-xl shadow-2xl">
+        <div className="text-center mb-8">
+          <span className="text-4xl font-bold text-[#FF5E00]">Woorkify</span>
+          <span className="text-4xl font-bold text-white"> Admin</span>
+        </div>
+        <Auth
+          supabaseClient={supabase}
+          appearance={{ 
+            theme: ThemeSupa,
+            variables: {
+              default: {
+                colors: {
+                  brand: '#FF5E00',
+                  brandAccent: '#E05100',
+                  defaultButtonBackgroundHover: '#E05100',
+                  inputBackground: '#374151', // bg-gray-700
+                  inputBorder: '#4B5563', // border-gray-600
+                  inputText: 'white',
+                  inputLabelText: '#D1D5DB', // text-gray-300
+                  messageText: 'white',
+                  messageTextDanger: '#F87171', // text-red-400
+                },
+                radii: {
+                  borderRadiusButton: '0.75rem', // rounded-xl
+                  buttonBorderRadius: '0.75rem',
+                  inputBorderRadius: '0.75rem',
+                }
+              },
+            },
+          }}
+          providers={[]} // No social providers for admin panel for now
+          redirectTo={window.location.origin + '/dashboard'} // Redirect after successful login/signup
+          localization={{
+            variables: {
+              sign_in: {
+                email_label: 'Email address',
+                password_label: 'Password',
+              },
+              sign_up: {
+                email_label: 'Email address',
+                password_label: 'Password',
+                button_label: 'Sign up',
+                link_text: 'Don\'t have an account? Sign up',
+              }
+            }
+          }}
+          theme="dark" // Use Supabase Auth UI dark theme
+        />
       </div>
     </div>
-  )
+  );
 }
