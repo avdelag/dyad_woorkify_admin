@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/context/AuthProvider';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
-// Lazy load components with correct paths
+// Lazy load components
 const Home = lazy(() => import('@/pages/Home'));
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/Signup'));
@@ -16,7 +16,6 @@ const Vendors = lazy(() => import('@/pages/dashboard/Vendors'));
 const Clients = lazy(() => import('@/pages/dashboard/Clients'));
 const Orders = lazy(() => import('@/pages/dashboard/Orders'));
 const Messages = lazy(() => import('@/pages/dashboard/Messages'));
-const NotFound = lazy(() => import('@/pages/NotFound'));
 
 const queryClient = new QueryClient();
 
@@ -32,7 +31,7 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/auth/admin-secret" element={<AdminSecret />} />
                 <Route path="/auth/login" element={<Login />} />
-                <Route path="/auth/signup" <Signup />} />
+                <Route path="/auth/signup" element={<Signup />} />
                 
                 <Route path="/dashboard" element={
                   <ProtectedRoute>
@@ -44,10 +43,8 @@ function App() {
                   <Route path="orders" element={<Orders />} />
                   <Route path="messages" element={<Messages />} />
                 </Route>
-                
-                <Route path="*" element={<NotFound />} />
               </Routes>
-            </Suspense>
+            </Suspend>
           </BrowserRouter>
         </AuthProvider>
       </TooltipProvider>
