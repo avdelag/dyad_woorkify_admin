@@ -9,17 +9,17 @@ import { ProtectedRoute } from "@/components/ProtectedRoute"
 
 const queryClient = new QueryClient()
 
-// Lazy load pages
+// Lazy load pages with correct file paths
 const Home = lazy(() => import("@/pages/Index"))
 const NotFound = lazy(() => import("@/pages/NotFound"))
 const AdminSecret = lazy(() => import("@/pages/auth/AdminSecret"))
 const Login = lazy(() => import("@/pages/auth/Login"))
 const Signup = lazy(() => import("@/pages/auth/Signup"))
 const Dashboard = lazy(() => import("@/pages/dashboard/Dashboard"))
-const DashboardVendors = lazy(() => import("@/pages/dashboard/vendors"))
-const DashboardClients = lazy(() => import("@/pages/dashboard/clients"))
-const DashboardOrders = lazy(() => import("@/pages/dashboard/orders"))
-const DashboardMessages = lazy(() => import("@/pages/dashboard/messages"))
+const Vendors = lazy(() => import("@/pages/dashboard/Vendors"))
+const Clients = lazy(() => import("@/pages/dashboard/Clients"))
+const Orders = lazy(() => import("@/pages/dashboard/Orders"))
+const Messages = lazy(() => import("@/pages/dashboard/Messages"))
 
 function App() {
   return (
@@ -42,25 +42,25 @@ function App() {
               
               <Route path="/dashboard/vendors" element={
                 <ProtectedRoute>
-                  <DashboardVendors />
+                  <Vendors />
                 </ProtectedRoute>
               } />
               
               <Route path="/dashboard/clients" element={
                 <ProtectedRoute>
-                  <DashboardClients />
+                  <Clients />
                 </ProtectedRoute>
               } />
               
               <Route path="/dashboard/orders" element={
                 <ProtectedRoute>
-                  <DashboardOrders />
+                  <Orders />
                 </ProtectedRoute>
               } />
               
               <Route path="/dashboard/messages" element={
                 <ProtectedRoute>
-                  <DashboardMessages />
+                  <Messages />
                 </ProtectedRoute>
               } />
               
