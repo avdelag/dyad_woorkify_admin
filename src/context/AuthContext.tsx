@@ -2,14 +2,14 @@
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { Loading } from "@/components/Loading"; // We'll create/use this
+import { Loading } from "@/components/Loading";
 
 export interface Profile {
   id: string;
   full_name?: string;
   avatar_url?: string;
   is_admin?: boolean;
-  // Add other profile fields as needed
+  // Añade otros campos del perfil según sea necesario
 }
 
 type AuthContextType = {
@@ -50,10 +50,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    const getSession = async () => {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
+    const getSessionAndProfile = async () => {
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error("Error getting session:", sessionError.message);
+        setIsLoading(false);
+        return;
+      }
+
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
+
       if (currentSession?.user) {
         const userProfile = await fetchProfile(currentSession.user.id);
         setProfile(userProfile);
@@ -65,36 +73,52 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(false);
     };
 
-    getSession();
+    getSessionAndProfile();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, currentSession) => {
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
         if (currentSession?.user) {
-          const userProfile = await fetchProfile(currentSession.user.id);
-          setProfile(userProfile);
-          setIsAdmin(userProfile?.is_admin === true);
+          // Solo volvemos a buscar el perfil si el usuario ha cambiado realmente o es un evento de SIGNED_IN
+          if (_event === 'SIGNED_IN' || (_event === 'USER_UPDATED' && user?.id !== currentSession.user.id)) {
+            const userProfile = await fetchProfile(currentSession.user.id);
+            setProfile(userProfile);
+            setIsAdmin(userProfile?.is_admin === true);
+          } else if (_event === 'USER_UPDATED' && profile?.id === currentSession.user.id) {
+            // Si es una actualización del mismo usuario, podríamos querer refrescar el perfil
+            const userProfile = await fetchProfile(currentSession.user.id);
+            setProfile(userProfile);
+            setIsAdmin(userProfile?.is_admin === true);
+          }
         } else {
           setProfile(null);
           setIsAdmin(false);
         }
-        if (_event !== 'INITIAL_SESSION') setIsLoading(false);
+        // Evitar que isLoading se ponga en true innecesariamente en cada cambio de estado
+        if (_event === 'INITIAL_SESSION' || _event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
+          setIsLoading(false);
+        }
       }
     );
 
     return () => {
       authListener?.subscription?.unsubscribe();
     };
-  }, [fetchProfile]);
+  }, [fetchProfile, user, profile]); // Añadidas dependencias user y profile
 
   const signOut = async () => {
-    setIsLoading(true);
-    await supabase.auth.signOut();
-    // State updates will be handled by onAuthStateChange
+    setIsLoading(true); // Indicar carga durante el cierre de sesión
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("Error signing out:", error.message);
+      // El estado de isLoading se manejará por onAuthStateChange o se puede poner a false aquí si es necesario
+    }
+    // setSession, setUser, setProfile, setIsAdmin se actualizarán a través de onAuthStateChange
   };
   
-  if (isLoading && !session) { // Show loading only on initial load without a session
+  // Mostrar carga solo en la carga inicial si no hay sesión, o si explícitamente estamos cargando (ej. durante signOut)
+  if (isLoading && session === null && !user) { 
     return <Loading />;
   }
 
@@ -107,8 +131,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+  if (context === undefined) { // Esta es la línea que lanza el error
+    throw new Error("useAuth must be used within an AuthProvider from the correct AuthContext.tsx");
   }
   return context;
 };
