@@ -1,13 +1,16 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom' // Corrected this line
+import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './globals.css'
+import { ThemeProvider } from 'next-themes'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <App />
+      </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>
 )
