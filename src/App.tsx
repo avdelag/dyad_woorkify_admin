@@ -4,7 +4,7 @@ import { Toaster } from '@/components/ui/Toaster';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/context/AuthProvider';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 
 // Lazy load components
 const Home = React.lazy(() => import('@/pages/Home'));
