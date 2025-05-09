@@ -7,23 +7,19 @@ import {
   LayoutDashboard,
   Users,
   ShoppingBag,
-  Calendar,
   Package,
-  Bell,
   MessageSquare,
-  BarChart2,
+  LogOut,
 } from "lucide-react";
 import Link from "next/link";
 
 const sidebarItems = [
   { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Clients", href: "/dashboard/clients", icon: Users },
   { name: "Vendors", href: "/dashboard/vendors", icon: ShoppingBag },
-  { name: "Bookings", href: "/dashboard/bookings", icon: Calendar },
+  { name: "Clients", href: "/dashboard/clients", icon: Users },
   { name: "Orders", href: "/dashboard/orders", icon: Package },
-  { name: "Notifications", href: "/dashboard/notifications", icon: Bell },
   { name: "Messages", href: "/dashboard/messages", icon: MessageSquare },
-  { name: "Reports & Stats", href: "/dashboard/reports", icon: BarChart2 },
+  { name: "Logout", href: "/logout", icon: LogOut },
 ];
 
 export const Sidebar = () => {
