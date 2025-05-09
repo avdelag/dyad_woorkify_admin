@@ -2,6 +2,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { cn } from '@/lib/utils'; // <--- AÑADIR ESTA LÍNEA
 
 const vendorsData = [
   { id: 'vnd_1', name: 'Global Goods Co.', contact: 'contact@globalgoods.com', status: 'Active', since: '2022-11-01' },
