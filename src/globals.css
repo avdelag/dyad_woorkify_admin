@@ -51,7 +51,7 @@
 
 @layer base {
   * {
-    @apply border-border/20; /* Changed from border-border to border-border/20 */
+    @apply border-gray-200 dark:border-gray-800; /* Using standard Tailwind border colors */
   }
   body {
     @apply bg-background text-foreground;
