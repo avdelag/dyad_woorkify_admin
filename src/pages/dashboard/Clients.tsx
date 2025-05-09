@@ -4,20 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { supabase, Profile } from '@/integrations/supabase/client'; // Assuming Profile type is exported or defined here
+import { supabase, Profile } from '@/integrations/supabase/client';
 import { toast } from 'react-hot-toast';
 import { PlusCircle, Search, Edit3, Trash2 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
-
-// If Profile type is not in client.ts, define it here or import from AuthContext
-// interface Profile {
-//   id: string;
-//   full_name?: string | null;
-//   email?: string | null;
-//   created_at: string;
-//   is_vendor?: boolean | null;
-// }
-
+import { cn } from '@/lib/utils'; // Asegurar importación de cn
 
 export default function DashboardClients() {
   const [clients, setClients] = useState<Profile[]>([]);
@@ -29,8 +20,9 @@ export default function DashboardClients() {
       setIsLoading(true);
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, email, created_at')
-        .eq('is_vendor', false) // Fetch only clients
+        .select('id, full_name, email, created_at, avatar_url')
+        .eq('is_vendor', false)
+        .eq('is_admin', false) // Añadido filtro para no mostrar admins
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -45,16 +37,15 @@ export default function DashboardClients() {
 
     fetchClients();
 
-    // Real-time updates for clients
     const clientChanges = supabase
-      .channel('public:profiles:clients')
+      .channel('public:profiles:clients_page') // Canal único para esta página
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'profiles', filter: 'is_vendor=eq.false' },
+        { event: '*', schema: 'public', table: 'profiles', filter: 'is_vendor=eq.false&is_admin=eq.false' },
         (payload) => {
-          console.log('Client change received!', payload);
-          // A more sophisticated update would be better (update/insert/delete specific row)
-          fetchClients(); // Re-fetch for simplicity
+          console.log('Client change received (clients_page)!', payload);
+          toast.success('Client list updated!');
+          fetchClients();
         }
       )
       .subscribe();
@@ -117,7 +108,15 @@ export default function DashboardClients() {
               <TableBody>
                 {filteredClients.length > 0 ? filteredClients.map((client) => (
                   <TableRow key={client.id} className="border-b-border/20 hover:bg-accent/30 smooth-hover">
-                    <TableCell className="font-medium text-foreground py-3">{client.full_name || 'N/A'}</TableCell>
+                    <TableCell className="font-medium text-foreground py-3 flex items-center">
+                      <Avatar className="h-8 w-8 mr-3">
+                        <AvatarImage src={client.avatar_url || undefined} alt={client.full_name || 'C'} />
+                        <AvatarFallback className="bg-muted text-muted-foreground text-xs">
+                          {client.full_name ? client.full_name.substring(0, 1).toUpperCase() : 'C'}
+                        </AvatarFallback>
+                      </Avatar>
+                      {client.full_name || 'N/A'}
+                    </TableCell>
                     <TableCell className="text-muted-foreground py-3">{client.email}</TableCell>
                     <TableCell className="text-muted-foreground py-3">
                       {new Date(client.created_at).toLocaleDateString()}
