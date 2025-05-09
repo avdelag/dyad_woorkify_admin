@@ -1,14 +1,9 @@
-"use client";
-import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "@/context/AuthProvider";
+import { Navigate } from 'react-router-dom';
 
-export const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
-  const { isAuthenticated } = useAuth();
-  const location = useLocation();
-
+export default function ProtectedRoute({ children }: { children: JSX.Element }) {
+  const isAuthenticated = true; // Replace with your auth logic
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" replace />;
   }
-
   return children;
-};
+}
