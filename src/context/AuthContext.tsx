@@ -2,18 +2,16 @@
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-// import { Loading } from "@/components/Loading"; // No se renderizará Loading desde aquí
 
 export interface Profile {
   id: string;
   full_name?: string;
   avatar_url?: string;
   is_admin?: boolean;
-  // Añade otros campos del perfil según sea necesario
-  created_at: string; // Añadido para consistencia con datos de Supabase
+  created_at: string;
   business_name?: string;
   business_description?: string;
-  email?: string; // El email también puede estar en el perfil
+  email?: string;
 }
 
 type AuthContextType = {
@@ -32,10 +30,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [_isLoading, _setIsLoading] = useState(true); // Renombrado para loggear cambios
+
+  // Wrapper para setIsLoading para loggear cambios
+  const setIsLoading = (loadingState: boolean) => {
+    console.log(`[AuthContext] setIsLoading called. New state: ${loadingState}`);
+    _setIsLoading(loadingState);
+  };
+  const isLoading = _isLoading; // Mantener el nombre original para el consumidor
+
+  console.log("[AuthContext] Provider rendering. Initial isLoading:", isLoading);
 
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
-    if (!userId) return null;
+    console.log(`[AuthContext] fetchProfile called for userId: ${userId}`);
+    if (!userId) {
+      console.log("[AuthContext] fetchProfile: No userId provided, returning null.");
+      return null;
+    }
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -43,98 +54,111 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .eq('id', userId)
         .single();
       if (error) {
-        console.error("Error fetching profile:", error.message);
+        console.error("[AuthContext] fetchProfile: Error fetching profile:", error.message);
         return null;
       }
+      console.log("[AuthContext] fetchProfile: Profile data fetched:", data);
       return data as Profile;
     } catch (e) {
-      console.error("Exception fetching profile:", e);
+      console.error("[AuthContext] fetchProfile: Exception fetching profile:", e);
       return null;
     }
   }, []);
 
   useEffect(() => {
-    setIsLoading(true); // Iniciar carga al montar o si fetchProfile cambia (no debería)
+    console.log("[AuthContext] Main useEffect triggered. Setting isLoading to true.");
+    setIsLoading(true);
 
-    // Carga inicial de la sesión y perfil
     const bootstrapAuth = async () => {
+      console.log("[AuthContext] bootstrapAuth: Starting...");
       const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession();
 
       if (sessionError) {
-        console.error("Error getting initial session:", sessionError.message);
-        // No establecer isLoading a false aquí todavía, el listener lo hará o el final de esta función.
+        console.error("[AuthContext] bootstrapAuth: Error getting initial session:", sessionError.message);
+      } else {
+        console.log("[AuthContext] bootstrapAuth: Initial session data:", initialSession);
       }
       
       setSession(initialSession);
       const activeUser = initialSession?.user ?? null;
       setUser(activeUser);
+      console.log("[AuthContext] bootstrapAuth: Active user set:", activeUser);
 
       if (activeUser) {
+        console.log(`[AuthContext] bootstrapAuth: Active user found (ID: ${activeUser.id}). Fetching profile...`);
         const userProfile = await fetchProfile(activeUser.id);
         setProfile(userProfile);
         setIsAdmin(userProfile?.is_admin === true);
+        console.log("[AuthContext] bootstrapAuth: Profile set:", userProfile, "IsAdmin:", userProfile?.is_admin === true);
       } else {
+        console.log("[AuthContext] bootstrapAuth: No active user. Setting profile to null and isAdmin to false.");
         setProfile(null);
         setIsAdmin(false);
       }
-      setIsLoading(false); // Finalizar carga inicial después de obtener sesión y perfil
+      console.log("[AuthContext] bootstrapAuth: Finished. Setting isLoading to false.");
+      setIsLoading(false);
     };
 
     bootstrapAuth();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, currentSession) => {
-        console.log('Auth state change:', _event, currentSession);
+        console.log(`[AuthContext] onAuthStateChange: Event: ${_event}, Current session:`, currentSession);
         
-        // Si el evento es uno que requiere recargar el perfil, marcamos isLoading.
         if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED') {
+          console.log(`[AuthContext] onAuthStateChange: Event is ${_event}. Setting isLoading to true.`);
           setIsLoading(true);
         }
         
         setSession(currentSession);
         const activeUser = currentSession?.user ?? null;
         setUser(activeUser);
+        console.log("[AuthContext] onAuthStateChange: Active user set:", activeUser);
 
         if (activeUser) {
-          // Recargar perfil si el usuario cambió, o si es un evento de inicio de sesión/actualización.
-          // O si el perfil actual no existe y debería.
-          const currentProfileId = profile?.id; // Capturar el ID del perfil actual antes de cualquier cambio
+          const currentProfileId = profile?.id;
+          console.log(`[AuthContext] onAuthStateChange: Active user found (ID: ${activeUser.id}). Current profile ID: ${currentProfileId}.`);
           if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED' || currentProfileId !== activeUser.id) {
+            console.log("[AuthContext] onAuthStateChange: Fetching/refreshing profile...");
             const userProfile = await fetchProfile(activeUser.id);
             setProfile(userProfile);
             setIsAdmin(userProfile?.is_admin === true);
+            console.log("[AuthContext] onAuthStateChange: Profile set:", userProfile, "IsAdmin:", userProfile?.is_admin === true);
+          } else {
+            console.log("[AuthContext] onAuthStateChange: Profile up-to-date, not re-fetching.");
           }
         } else {
+          console.log("[AuthContext] onAuthStateChange: No active user. Setting profile to null and isAdmin to false.");
           setProfile(null);
           setIsAdmin(false);
         }
         
-        // Asegurarse de que isLoading se ponga a false después de procesar el evento,
-        // especialmente para SIGNED_IN, SIGNED_OUT, USER_UPDATED.
-        // INITIAL_SESSION es manejado por bootstrapAuth.
         if (_event === 'SIGNED_IN' || _event === 'SIGNED_OUT' || _event === 'USER_UPDATED') {
+          console.log(`[AuthContext] onAuthStateChange: Event is ${_event}. Setting isLoading to false.`);
           setIsLoading(false);
         }
       }
     );
 
     return () => {
+      console.log("[AuthContext] Main useEffect cleanup: Unsubscribing auth listener.");
       authListener?.subscription?.unsubscribe();
     };
-  }, [fetchProfile]); // Solo depende de fetchProfile, que es estable.
+  }, [fetchProfile, profile]); // Añadido profile a las dependencias para re-evaluar si el perfil cambia externamente (aunque fetchProfile es useCallback)
 
   const signOut = async () => {
+    console.log("[AuthContext] signOut called. Setting isLoading to true.");
     setIsLoading(true); 
     const { error } = await supabase.auth.signOut();
     if (error) {
-      console.error("Error signing out:", error.message);
-      setIsLoading(false); // Asegurar que isLoading se ponga a false si hay error en signOut
+      console.error("[AuthContext] signOut: Error signing out:", error.message);
+      console.log("[AuthContext] signOut: Error occurred. Setting isLoading to false.");
+      setIsLoading(false);
+    } else {
+      console.log("[AuthContext] signOut: Successful. Auth listener will handle state updates and isLoading.");
     }
-    // El listener onAuthStateChange se encargará de actualizar el estado y isLoading a false.
   };
   
-  // El AuthProvider ya no renderiza <Loading />.
-  // Los consumidores (como ProtectedRoute) usarán el estado `isLoading` del contexto.
   return (
     <AuthContext.Provider value={{ session, user, profile, isAdmin, isLoading, signOut }}>
       {children}
