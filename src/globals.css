@@ -5,8 +5,8 @@
 @layer base {
   :root {
     /* Dark Theme Variables (Inspired by Airbnb/Uber dark modes) */
-    --background: 220 17% 10%; /* Very dark blue/gray: #161A1D */
-    --foreground: 210 40% 98%; /* Almost white: #FAFAFB */
+    --background: 220 17% 10%; /* Very dark blue/gray: #161A1D (Negro suave) */
+    --foreground: 210 40% 98%; /* Almost white: #FAFAFB (Blanco puro) */
 
     --card: 220 17% 13%; /* Slightly lighter dark blue/gray for cards: #1A1F23 */
     --card-foreground: 210 40% 98%;
@@ -14,8 +14,8 @@
     --popover: 220 17% 10%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 22 100% 50%; /* Woorkify Orange: #FF5E00 */
-    --primary-foreground: 210 40% 98%; /* Text on orange buttons */
+    --primary: 16 100% 66%; /* Rojo Coral: #FF7F50 */
+    --primary-foreground: 210 40% 98%; /* Text on coral buttons */
 
     --secondary: 217 91% 60%; /* Bright Blue Accent (like brand.blue) */
     --secondary-foreground: 210 40% 98%;
@@ -31,12 +31,12 @@
 
     --border: 220 17% 20%; /* Border color for dark theme */
     --input: 220 17% 18%; /* Input background: #262B2F */
-    --ring: 22 100% 50%; /* Ring color (Woorkify Orange) */
+    --ring: 16 100% 66%; /* Ring color (Rojo Coral) */
 
-    --radius: 0.75rem; /* Slightly larger radius for modern feel */
+    --radius: 1rem; /* Actualizado para equivaler a rounded-2xl */
   }
 
-  /* Light theme variables (can be defined if you want to support light mode via next-themes) */
+  /* Light theme variables */
   .light {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
@@ -44,8 +44,8 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 26 100% 50%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 16 100% 66%; /* Rojo Coral: #FF7F50 */
+    --primary-foreground: 0 0% 100%; /* Texto blanco sobre coral */
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
@@ -56,7 +56,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 26 100% 50%;
+    --ring: 16 100% 66%; /* Ring color (Rojo Coral) */
   }
 }
 
@@ -71,8 +71,6 @@
     font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Apply a subtle gradient background for depth */
-    /* background-image: linear-gradient(to bottom right, hsl(var(--background)), hsl(var(--muted) / 0.5)); */
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-bold tracking-tight; /* Tighter tracking for headings */
