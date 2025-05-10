@@ -2,7 +2,7 @@
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { Loading } from "@/components/Loading";
+// import { Loading } from "@/components/Loading"; // No se renderizará Loading desde aquí
 
 export interface Profile {
   id: string;
@@ -10,6 +10,10 @@ export interface Profile {
   avatar_url?: string;
   is_admin?: boolean;
   // Añade otros campos del perfil según sea necesario
+  created_at: string; // Añadido para consistencia con datos de Supabase
+  business_name?: string;
+  business_description?: string;
+  email?: string; // El email también puede estar en el perfil
 }
 
 type AuthContextType = {
@@ -30,7 +34,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
     if (!userId) return null;
     try {
       const { data, error } = await supabase
@@ -50,44 +54,53 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    const getSessionAndProfile = async () => {
-      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
-      
+    setIsLoading(true); // Iniciar carga al montar o si fetchProfile cambia (no debería)
+
+    // Carga inicial de la sesión y perfil
+    const bootstrapAuth = async () => {
+      const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession();
+
       if (sessionError) {
-        console.error("Error getting session:", sessionError.message);
-        setIsLoading(false);
-        return;
+        console.error("Error getting initial session:", sessionError.message);
+        // No establecer isLoading a false aquí todavía, el listener lo hará o el final de esta función.
       }
+      
+      setSession(initialSession);
+      const activeUser = initialSession?.user ?? null;
+      setUser(activeUser);
 
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
-
-      if (currentSession?.user) {
-        const userProfile = await fetchProfile(currentSession.user.id);
+      if (activeUser) {
+        const userProfile = await fetchProfile(activeUser.id);
         setProfile(userProfile);
         setIsAdmin(userProfile?.is_admin === true);
       } else {
         setProfile(null);
         setIsAdmin(false);
       }
-      setIsLoading(false);
+      setIsLoading(false); // Finalizar carga inicial después de obtener sesión y perfil
     };
 
-    getSessionAndProfile();
+    bootstrapAuth();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, currentSession) => {
+        console.log('Auth state change:', _event, currentSession);
+        
+        // Si el evento es uno que requiere recargar el perfil, marcamos isLoading.
+        if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED') {
+          setIsLoading(true);
+        }
+        
         setSession(currentSession);
-        setUser(currentSession?.user ?? null);
-        if (currentSession?.user) {
-          // Solo volvemos a buscar el perfil si el usuario ha cambiado realmente o es un evento de SIGNED_IN
-          if (_event === 'SIGNED_IN' || (_event === 'USER_UPDATED' && user?.id !== currentSession.user.id)) {
-            const userProfile = await fetchProfile(currentSession.user.id);
-            setProfile(userProfile);
-            setIsAdmin(userProfile?.is_admin === true);
-          } else if (_event === 'USER_UPDATED' && profile?.id === currentSession.user.id) {
-            // Si es una actualización del mismo usuario, podríamos querer refrescar el perfil
-            const userProfile = await fetchProfile(currentSession.user.id);
+        const activeUser = currentSession?.user ?? null;
+        setUser(activeUser);
+
+        if (activeUser) {
+          // Recargar perfil si el usuario cambió, o si es un evento de inicio de sesión/actualización.
+          // O si el perfil actual no existe y debería.
+          const currentProfileId = profile?.id; // Capturar el ID del perfil actual antes de cualquier cambio
+          if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED' || currentProfileId !== activeUser.id) {
+            const userProfile = await fetchProfile(activeUser.id);
             setProfile(userProfile);
             setIsAdmin(userProfile?.is_admin === true);
           }
@@ -95,8 +108,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setProfile(null);
           setIsAdmin(false);
         }
-        // Evitar que isLoading se ponga en true innecesariamente en cada cambio de estado
-        if (_event === 'INITIAL_SESSION' || _event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
+        
+        // Asegurarse de que isLoading se ponga a false después de procesar el evento,
+        // especialmente para SIGNED_IN, SIGNED_OUT, USER_UPDATED.
+        // INITIAL_SESSION es manejado por bootstrapAuth.
+        if (_event === 'SIGNED_IN' || _event === 'SIGNED_OUT' || _event === 'USER_UPDATED') {
           setIsLoading(false);
         }
       }
@@ -105,23 +121,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       authListener?.subscription?.unsubscribe();
     };
-  }, [fetchProfile, user, profile]); // Añadidas dependencias user y profile
+  }, [fetchProfile]); // Solo depende de fetchProfile, que es estable.
 
   const signOut = async () => {
-    setIsLoading(true); // Indicar carga durante el cierre de sesión
+    setIsLoading(true); 
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("Error signing out:", error.message);
-      // El estado de isLoading se manejará por onAuthStateChange o se puede poner a false aquí si es necesario
+      setIsLoading(false); // Asegurar que isLoading se ponga a false si hay error en signOut
     }
-    // setSession, setUser, setProfile, setIsAdmin se actualizarán a través de onAuthStateChange
+    // El listener onAuthStateChange se encargará de actualizar el estado y isLoading a false.
   };
   
-  // Mostrar carga solo en la carga inicial si no hay sesión, o si explícitamente estamos cargando (ej. durante signOut)
-  if (isLoading && session === null && !user) { 
-    return <Loading />;
-  }
-
+  // El AuthProvider ya no renderiza <Loading />.
+  // Los consumidores (como ProtectedRoute) usarán el estado `isLoading` del contexto.
   return (
     <AuthContext.Provider value={{ session, user, profile, isAdmin, isLoading, signOut }}>
       {children}
@@ -131,7 +144,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) { // Esta es la línea que lanza el error
+  if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider from the correct AuthContext.tsx");
   }
   return context;
