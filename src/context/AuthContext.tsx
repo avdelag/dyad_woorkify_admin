@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from "react";
 import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client"; // Corrected import path
+import { supabase } from "@/integrations/supabase/client"; // Corrected import path using alias
 
 export interface Profile {
   id: string;
