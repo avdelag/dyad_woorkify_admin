@@ -1,27 +1,29 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom' // Añadido Link
-import { toast } from 'react-hot-toast'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import P5Sketch from '@/components/P5Sketch' // Mantener estética
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import P5Sketch from '@/components/P5Sketch';
+import { PasswordInput } from '@/components/PasswordInput'; // Usar el componente de contraseña
 
 export default function AdminSecret() {
-  const [code, setCode] = useState('')
-  const navigate = useNavigate()
+  const [code, setCode] = useState('');
+  const [isCodeVerified, setIsCodeVerified] = useState(false); // Nuevo estado
+  const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // ESTE CÓDIGO ES SOLO PARA EJEMPLO LOCAL. EN PRODUCCIÓN, ESTA VERIFICACIÓN DEBERÍA SER EN BACKEND.
+    e.preventDefault();
+    // ESTE CÓDIGO ES SOLO PARA EJEMPLO LOCAL.
+    // EN PRODUCCIÓN, ESTA VERIFICACIÓN DEBERÍA SER EN BACKEND Y MÁS SEGURA.
     if (code === 'ADMIN2025') { 
-      toast.success('Code accepted! Proceed to login or sign up.');
-      // No redirigimos automáticamente, dejamos que el usuario elija.
-      // O podrías redirigir a una página intermedia que ofrezca ambas opciones.
-      // Por simplicidad, asumiremos que el usuario ve los botones de abajo.
+      toast.success('Admin code verified!');
+      setIsCodeVerified(true); // Mostrar botones de login/signup
     } else {
-      toast.error('Invalid admin code!')
+      toast.error('Invalid admin code!');
+      setIsCodeVerified(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 p-4 relative overflow-hidden">
@@ -30,48 +32,53 @@ export default function AdminSecret() {
         <div className="text-center mb-8">
           <span className="text-4xl font-bold text-brand-orange">Woorkify</span>
           <span className="text-4xl font-bold text-white"> Admin</span>
-          <p className="text-gray-400 mt-2">Admin Verification</p>
+          <p className="text-gray-400 mt-2">Admin Portal Access</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <Label htmlFor="adminCode" className="text-gray-300">Admin Secret Code</Label>
-            <Input
-              id="adminCode"
-              type="password" // Debería ser password para ocultar el código
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="Enter secret code"
-              required
-              className="mt-1 bg-gray-700 text-white border-gray-600 focus:border-brand-orange focus:ring-brand-orange"
-            />
+
+        {!isCodeVerified ? (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <Label htmlFor="adminCode" className="text-gray-300">Enter Admin Secret Code</Label>
+              {/* Usamos PasswordInput para el campo de código secreto */}
+              <PasswordInput
+                id="adminCode"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="Your secret code"
+                required
+                className="mt-1 bg-gray-700 text-white border-gray-600 focus:border-brand-orange focus:ring-brand-orange"
+              />
+            </div>
+            <Button type="submit" className="w-full bg-brand-orange hover:bg-brand-orange/90 text-white text-lg py-3">
+              Verify Code
+            </Button>
+            <p className="mt-6 text-xs text-center text-gray-500">
+              This is a security step to access the admin login/signup area.
+            </p>
+          </form>
+        ) : (
+          <div className="space-y-6 text-center">
+            <p className="text-green-400 font-semibold">Code Verified Successfully!</p>
+            <p className="text-gray-300">Please proceed to log in or create a new admin account.</p>
+            <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4 sm:justify-center pt-4">
+              <Button 
+                onClick={() => navigate('/login')} 
+                variant="outline"
+                className="w-full sm:w-auto border-brand-blue text-brand-blue hover:bg-brand-blue/10 hover:text-brand-blue text-lg py-3"
+              >
+                Go to Login
+              </Button>
+              <Button 
+                onClick={() => navigate('/signup')} 
+                variant="outline"
+                className="w-full sm:w-auto border-brand-green text-brand-green hover:bg-brand-green/10 hover:text-brand-green text-lg py-3"
+              >
+                Create Admin Account
+              </Button>
+            </div>
           </div>
-          <Button type="submit" className="w-full bg-brand-orange hover:bg-brand-orange/90 text-white text-lg py-3">
-            Verify Code
-          </Button>
-        </form>
-        {/* Opciones después de verificar el código (o siempre visibles si prefieres) */}
-        {/* Idealmente, estos botones aparecerían o se activarían DESPUÉS de verificar el código. */}
-        {/* Por ahora, los mostramos y el usuario debe verificar primero. */}
-        <div className="mt-8 flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4 sm:justify-center">
-            <Button 
-              onClick={() => navigate('/login')} 
-              variant="outline"
-              className="w-full sm:w-auto border-brand-blue text-brand-blue hover:bg-brand-blue/10 hover:text-brand-blue"
-            >
-              Go to Login
-            </Button>
-            <Button 
-              onClick={() => navigate('/signup')} 
-              variant="outline"
-              className="w-full sm:w-auto border-brand-green text-brand-green hover:bg-brand-green/10 hover:text-brand-green"
-            >
-              Create Admin Account
-            </Button>
-        </div>
-         <p className="mt-6 text-xs text-center text-gray-500">
-          Note: The "Admin Secret Code" is a placeholder for a more secure verification method.
-        </p>
+        )}
       </div>
     </div>
-  )
+  );
 }
