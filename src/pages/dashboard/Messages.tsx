@@ -1,11 +1,11 @@
 "use client";
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom'; // Import useNavigate
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Send, UserCheck, Briefcase, Loader2, Check } from 'lucide-react'; // Added Check
+import { Send, UserCheck, Briefcase, Loader2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'react-hot-toast';
@@ -19,10 +19,10 @@ interface Message {
   message: string;
   created_at: string;
   product_id?: string;
-  sender_profile?: { full_name?: string; avatar_url?: string; is_vendor?: boolean };
-  recipient_profile?: { full_name?: string; avatar_url?: string; is_vendor?: boolean };
-  read_at?: string | null; 
-  message_type?: string; // Added for consistency
+  sender_profile?: { id: string; full_name?: string; avatar_url?: string; is_vendor?: boolean };
+  recipient_profile?: { id: string; full_name?: string; avatar_url?: string; is_vendor?: boolean };
+  read_at?: string | null;
+  message_type?: string;
 }
 
 interface Conversation {
@@ -36,9 +36,9 @@ interface Conversation {
 }
 
 export default function DashboardMessages() {
-  const { user, profile: adminProfile } = useAuth(); 
+  const { user, profile: adminProfile } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate(); // For clearing navigation state
+  const navigate = useNavigate();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -47,114 +47,132 @@ export default function DashboardMessages() {
   
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [showLoadingIndicator, setShowLoadingIndicator] = useState(false);
-
   const [isSending, setIsSending] = useState(false);
-  const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
-
-  const startLoadingTimer = () => {
-    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
-    loadingTimerRef.current = setTimeout(() => {
-      setShowLoadingIndicator(true);
-    }, 300); // Shorter delay
-  };
-
-  const stopLoadingTimer = () => {
-    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
-    setShowLoadingIndicator(false);
-  };
+  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
   const fetchConversations = useCallback(async (participantToSelect?: string) => {
     if (!user) return;
+    console.log("[Messages] fetchConversations called. User ID:", user.id, "ParticipantToSelect:", participantToSelect);
     setIsLoadingConversations(true);
-    if (!selectedConversation && !participantToSelect) startLoadingTimer();
 
     try {
-      const { data, error } = await supabase.rpc('get_conversations_for_user', {
-        user_id_param: user.id
-      });
+      const { data: rawMessages, error } = await supabase
+        .from('contact_messages')
+        .select(`
+          *,
+          sender_profile:profiles!contact_messages_sender_id_fkey(id, full_name, avatar_url, is_vendor),
+          recipient_profile:profiles!contact_messages_recipient_id_fkey(id, full_name, avatar_url, is_vendor)
+        `)
+        .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
+        .order('created_at', { ascending: false });
 
-      if (!selectedConversation && !participantToSelect) stopLoadingTimer();
       if (error) {
-        console.error("Error fetching conversations via RPC:", error);
+        console.error("[Messages] Error fetching raw messages for conversations:", error);
         toast.error("Failed to load conversations: " + error.message);
         setConversations([]);
-      } else {
-        const mappedConversations = data.map((convo: any) => ({
-          participant_id: convo.other_user_id,
-          participant_name: convo.other_user_profile?.full_name || 'Unknown User',
-          participant_avatar: convo.other_user_profile?.avatar_url,
-          is_vendor: convo.other_user_profile?.is_vendor,
-          last_message: convo.last_message_content,
-          last_message_time: convo.last_message_created_at,
-          unread_count: convo.unread_count || 0,
-        }));
-        setConversations(mappedConversations);
+        return;
+      }
+      
+      console.log("[Messages] Raw messages for conversations:", rawMessages);
 
-        if (participantToSelect) {
-          const convoToSelect = mappedConversations.find(c => c.participant_id === participantToSelect);
-          if (convoToSelect) {
-            setSelectedConversation(convoToSelect);
-          } else {
-            console.warn(`Conversation with participant ${participantToSelect} not found after fetching.`);
-          }
+      const convMap = new Map<string, Conversation>();
+      let unreadCounts: {[key: string]: number} = {};
+
+      rawMessages?.forEach(msg => {
+        const participantIsSender = msg.sender_id !== user.id;
+        const participantId = participantIsSender ? msg.sender_id : msg.recipient_id;
+        
+        if (!participantId || participantId === user.id) return; // Skip messages sent to self if any
+
+        const participantProfile = participantIsSender ? msg.sender_profile : msg.recipient_profile;
+
+        if (!convMap.has(participantId)) {
+          convMap.set(participantId, {
+            participant_id: participantId,
+            participant_name: participantProfile?.full_name || 'Unknown User',
+            participant_avatar: participantProfile?.avatar_url,
+            is_vendor: participantProfile?.is_vendor,
+            last_message: msg.message,
+            last_message_time: msg.created_at,
+            unread_count: 0,
+          });
+        }
+        
+        // Count unread messages for this participant
+        if (msg.recipient_id === user.id && !msg.read_at) {
+          unreadCounts[participantId] = (unreadCounts[participantId] || 0) + 1;
+        }
+      });
+      
+      const updatedConversations = Array.from(convMap.values()).map(convo => ({
+        ...convo,
+        unread_count: unreadCounts[convo.participant_id] || 0,
+      })).sort((a, b) => new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime());
+      
+      console.log("[Messages] Processed conversations:", updatedConversations);
+      setConversations(updatedConversations);
+
+      if (participantToSelect) {
+        const convoToSelect = updatedConversations.find(c => c.participant_id === participantToSelect);
+        if (convoToSelect) {
+          setSelectedConversation(convoToSelect);
+        } else {
+          console.warn(`[Messages] Conversation with participant ${participantToSelect} not found after fetching.`);
         }
       }
+
     } catch (e: any) {
-      if (!selectedConversation && !participantToSelect) stopLoadingTimer();
+      console.error("[Messages] Exception in fetchConversations:", e);
       toast.error("An unexpected error occurred while fetching conversations.");
-      console.error(e);
       setConversations([]);
     } finally {
       setIsLoadingConversations(false);
-      if (!selectedConversation && !participantToSelect) stopLoadingTimer();
     }
-  }, [user, selectedConversation]);
+  }, [user]);
 
   const markMessagesAsRead = useCallback(async (participantId: string) => {
     if (!user || !participantId) return;
+    console.log("[Messages] markMessagesAsRead called for participant:", participantId);
     try {
       const { error } = await supabase
         .from('contact_messages')
         .update({ read_at: new Date().toISOString() })
         .eq('recipient_id', user.id)
         .eq('sender_id', participantId)
-        .is('read_at', null); 
+        .is('read_at', null);
 
       if (error) {
-        console.error("Error marking messages as read:", error);
+        console.error("[Messages] Error marking messages as read:", error);
       } else {
-        setConversations(prevConvos => 
-          prevConvos.map(c => 
+        console.log("[Messages] Successfully marked messages as read for participant:", participantId);
+        setConversations(prevConvos =>
+          prevConvos.map(c =>
             c.participant_id === participantId ? { ...c, unread_count: 0 } : c
           )
         );
-        setMessages(prevMsgs => 
-            prevMsgs.map(m => 
-                m.sender_id === participantId && m.recipient_id === user.id && !m.read_at 
-                ? { ...m, read_at: new Date().toISOString() } 
-                : m
-            )
+        setMessages(prevMsgs =>
+          prevMsgs.map(m =>
+            m.sender_id === participantId && m.recipient_id === user.id && !m.read_at
+              ? { ...m, read_at: new Date().toISOString() }
+              : m
+          )
         );
       }
     } catch (e) {
-      console.error("Exception marking messages as read:", e);
+      console.error("[Messages] Exception marking messages as read:", e);
     }
   }, [user]);
 
   const fetchMessages = useCallback(async (participantId: string) => {
     if (!user || !participantId) return;
+    console.log("[Messages] fetchMessages called for participant:", participantId);
     setIsLoadingMessages(true);
-    startLoadingTimer();
     try {
       const { data, error } = await supabase
         .from('contact_messages')
@@ -165,31 +183,30 @@ export default function DashboardMessages() {
         `)
         .or(`(sender_id.eq.${user.id},recipient_id.eq.${participantId}),(sender_id.eq.${participantId},recipient_id.eq.${user.id})`)
         .order('created_at', { ascending: true });
-      
-      stopLoadingTimer();
+
       if (error) {
+        console.error("[Messages] Error fetching messages:", error);
         toast.error("Failed to load messages: " + error.message);
         setMessages([]);
       } else {
+        console.log("[Messages] Fetched messages:", data);
         setMessages(data as Message[] || []);
         await markMessagesAsRead(participantId);
       }
     } catch (e: any) {
-      stopLoadingTimer();
+      console.error("[Messages] Exception fetching messages:", e);
       toast.error("An unexpected error occurred while fetching messages.");
-      console.error(e);
       setMessages([]);
     } finally {
       setIsLoadingMessages(false);
-      stopLoadingTimer();
     }
   }, [user, markMessagesAsRead]);
 
   useEffect(() => {
     const participantToSelect = location.state?.openConversationWith;
+    console.log("[Messages] useEffect for location.state.openConversationWith:", participantToSelect);
     fetchConversations(participantToSelect);
     if (participantToSelect) {
-      // Clear the state after using it
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [fetchConversations, location.state, location.pathname, navigate]);
@@ -201,114 +218,131 @@ export default function DashboardMessages() {
       setMessages([]);
     }
   }, [selectedConversation, fetchMessages]);
-  
+
   useEffect(() => {
     if (!user) return;
-
+    console.log("[Messages] Setting up Supabase real-time channel for user:", user.id);
     const messageChannel = supabase
-      .channel(`public:contact_messages:admin_dashboard:${user.id}`) 
+      .channel(`public:contact_messages:admin_dashboard:${user.id}`)
       .on(
         'postgres_changes',
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
+        {
+          event: 'INSERT',
+          schema: 'public',
           table: 'contact_messages',
           filter: `or(recipient_id.eq.${user.id},sender_id.eq.${user.id})`
         },
         (payload) => {
-          console.log('[Admin Messages] New message event received (real-time):', payload);
+          console.log('[Messages] Real-time: New message event received:', payload);
           const newMessageData = payload.new as Message;
           
-          fetchConversations(selectedConversation?.participant_id); // Refresh conversations to update unread counts and last message
-
-          if (selectedConversation && 
-              ((newMessageData.sender_id === user.id && newMessageData.recipient_id === selectedConversation.participant_id) ||
-               (newMessageData.sender_id === selectedConversation.participant_id && newMessageData.recipient_id === user.id))
-          ) {
-            setMessages(prev => {
-              // Avoid duplicates if message already added optimistically or by another fetch
-              if (prev.find(m => m.id === newMessageData.id)) return prev;
-              return [...prev, newMessageData];
-            });
-            if (newMessageData.recipient_id === user.id) {
-              markMessagesAsRead(newMessageData.sender_id);
+          // Fetch full sender profile for the new message if not already included
+          // This is a simplified approach; ideally, the trigger would provide this or use the profile from existing conversations
+          const fetchSenderProfileIfNeeded = async (msg: Message): Promise<Message> => {
+            if (msg.sender_id && !msg.sender_profile) {
+                const existingConvo = conversations.find(c => c.participant_id === msg.sender_id);
+                if (existingConvo) {
+                    return { ...msg, sender_profile: { id: existingConvo.participant_id, full_name: existingConvo.participant_name, avatar_url: existingConvo.participant_avatar, is_vendor: existingConvo.is_vendor }};
+                }
+                // Fallback: fetch profile if not in existing conversations (less ideal for performance)
+                const { data: profileData, error: profileError } = await supabase.from('profiles').select('id, full_name, avatar_url, is_vendor').eq('id', msg.sender_id).single();
+                if (!profileError && profileData) {
+                    return { ...msg, sender_profile: profileData };
+                }
             }
-          } else if (newMessageData.recipient_id === user.id) {
-            toast.info(`New message from ${newMessageData.sender_profile?.full_name || 'a user'}`);
-          }
+            return msg;
+          };
+
+          fetchSenderProfileIfNeeded(newMessageData).then(processedNewMessage => {
+            if (selectedConversation &&
+              ((processedNewMessage.sender_id === user.id && processedNewMessage.recipient_id === selectedConversation.participant_id) ||
+               (processedNewMessage.sender_id === selectedConversation.participant_id && processedNewMessage.recipient_id === user.id))
+            ) {
+              setMessages(prev => {
+                if (prev.find(m => m.id === processedNewMessage.id)) return prev;
+                return [...prev, processedNewMessage];
+              });
+              if (processedNewMessage.recipient_id === user.id) {
+                markMessagesAsRead(processedNewMessage.sender_id);
+              }
+            } else if (processedNewMessage.recipient_id === user.id) {
+              toast.info(`New message from ${processedNewMessage.sender_profile?.full_name || 'a user'}`);
+            }
+            fetchConversations(selectedConversation?.participant_id); // Refresh conversations
+          });
         }
       )
       .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
-          console.log('[Admin Messages] Subscribed to contact_messages channel for admin!');
-        }
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error('[Admin Messages] Subscription error:', status, err);
+          console.log('[Messages] Real-time: Subscribed to contact_messages channel!');
+        } else {
+          console.error('[Messages] Real-time: Subscription error:', status, err);
         }
       });
 
     return () => {
+      console.log("[Messages] Unsubscribing from Supabase real-time channel.");
       supabase.removeChannel(messageChannel);
     };
-  }, [user, selectedConversation, fetchConversations, markMessagesAsRead]);
-
+  }, [user, selectedConversation, fetchConversations, markMessagesAsRead, conversations]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !user || !selectedConversation || !adminProfile) return;
-
+    console.log("[Messages] handleSendMessage. To:", selectedConversation.participant_id, "Message:", newMessage);
     setIsSending(true);
-    const tempId = `temp-${Date.now()}`; // Optimistic update ID
-    const messageToSend: Partial<Message> = {
-      id: tempId, // Temporary ID for optimistic update
-      sender_id: user.id, 
+
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      sender_id: user.id,
       recipient_id: selectedConversation.participant_id,
       message: newMessage,
       created_at: new Date().toISOString(),
-      message_type: adminProfile.is_admin && selectedConversation.is_vendor ? 'admin_to_vendor' 
+      message_type: adminProfile.is_admin && selectedConversation.is_vendor ? 'admin_to_vendor'
                     : adminProfile.is_admin && !selectedConversation.is_vendor ? 'admin_to_user'
                     : 'unknown',
-      sender_profile: { // Optimistic sender profile
+      sender_profile: {
+        id: adminProfile.id,
         full_name: adminProfile.full_name,
         avatar_url: adminProfile.avatar_url,
-        is_vendor: adminProfile.is_admin // Admins are not vendors in this context
-      }
+        is_vendor: false // Admin is not a vendor in this context
+      },
+      read_at: null
     };
 
-    // Optimistic update
-    setMessages(prev => [...prev, messageToSend as Message]);
+    setMessages(prev => [...prev, optimisticMessage]);
     setNewMessage('');
 
     const { data: insertedMessage, error } = await supabase
       .from('contact_messages')
       .insert({
-        sender_id: messageToSend.sender_id,
-        recipient_id: messageToSend.recipient_id,
-        message: messageToSend.message,
-        message_type: messageToSend.message_type,
+        sender_id: user.id,
+        recipient_id: selectedConversation.participant_id,
+        message: newMessage,
+        message_type: optimisticMessage.message_type,
       })
-      .select()
+      .select(`
+        *,
+        sender_profile:profiles!contact_messages_sender_id_fkey(id, full_name, avatar_url, is_vendor),
+        recipient_profile:profiles!contact_messages_recipient_id_fkey(id, full_name, avatar_url, is_vendor)
+      `)
       .single();
     
     setIsSending(false);
     if (error) {
+      console.error("[Messages] Error sending message:", error);
       toast.error("Failed to send message: " + error.message);
-      // Revert optimistic update
       setMessages(prev => prev.filter(m => m.id !== tempId));
-      setNewMessage(messageToSend.message!); // Put message back in input
+      setNewMessage(newMessage); // Restore message to input
     } else if (insertedMessage) {
-      // Replace temp message with actual message from DB
-      setMessages(prev => prev.map(m => m.id === tempId ? { ...insertedMessage, sender_profile: messageToSend.sender_profile } as Message : m));
-      fetchConversations(selectedConversation.participant_id); // Update conversation list
+      console.log("[Messages] Message sent successfully:", insertedMessage);
+      setMessages(prev => prev.map(m => m.id === tempId ? (insertedMessage as Message) : m));
+      fetchConversations(selectedConversation.participant_id);
     }
   };
 
-  const isOverallLoading = isLoadingConversations && conversations.length === 0 && !selectedConversation;
-
-  if (isOverallLoading && !showLoadingIndicator) {
-    return <div className="h-[calc(100vh-10rem)] flex items-center justify-center"><p className="text-muted-foreground">Initializing messages...</p></div>;
-  }
-  if (isOverallLoading && showLoadingIndicator) {
+  if (isLoadingConversations && conversations.length === 0) {
     return <Loading />;
   }
 
@@ -321,7 +355,7 @@ export default function DashboardMessages() {
             <CardTitle className="text-foreground">Conversations</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {isLoadingConversations && conversations.length === 0 && showLoadingIndicator && (
+            {isLoadingConversations && conversations.length === 0 && (
               <div className="p-4 text-center text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin mx-auto my-4" />
                 Loading conversations...
@@ -374,7 +408,7 @@ export default function DashboardMessages() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-grow overflow-y-auto p-6 space-y-4">
-                {isLoadingMessages && showLoadingIndicator && (
+                {isLoadingMessages && (
                   <div className="flex justify-center items-center h-full">
                     <Loader2 className="h-8 w-8 animate-spin text-brand-orange" />
                   </div>
