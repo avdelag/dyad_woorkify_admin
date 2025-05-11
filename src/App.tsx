@@ -1,42 +1,22 @@
-import { Routes, Route } from 'react-router-dom';
-import LandingPage from './pages/LandingPage';
-import AdminSecret from './pages/AdminSecret'; // Asumo que aún lo usas
-import Login from './pages/Login';
-// import Signup from './pages/Signup'; // Supabase Auth UI maneja esto
-import { DashboardLayout } from './components/layout/DashboardLayout'; 
-import DashboardOverview from './pages/dashboard/Overview';
-import DashboardUsers from './pages/dashboard/Clients'; // Renombrado a Clients
-import DashboardVendors from './pages/dashboard/Vendors';
-import DashboardStatistics from './pages/dashboard/Statistics';
-import DashboardSettings from './pages/dashboard/Settings';
-import DashboardMessages from './pages/dashboard/Messages';
-import DashboardProfile from './pages/dashboard/Profile';
-import DashboardOrders from './pages/dashboard/Orders'; // Nueva importación
-import NotFoundPage from './pages/NotFound';
-
+import { Routes, Route, Link } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
+// Componentes de página muy simples para prueba
+const HomePage = () => <div><h1>Home Page</h1><Link to="/about">Go to About</Link></div>;
+const AboutPage = () => <div><h1>About Page</h1><Link to="/">Go to Home</Link></div>;
+
 function App() {
+  console.log("[App.tsx] Rendering simplified App component.");
   return (
     <>
       <Toaster position="top-right" />
+      <nav>
+        <Link to="/">Home</Link> | <Link to="/about">About</Link>
+      </nav>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/admin-secret" element={<AdminSecret />} />
-        <Route path="/login" element={<Login />} />
-        {/* <Route path="/signup" element={<Signup />} /> */}
-        
-        <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route index element={<DashboardOverview />} />
-          <Route path="clients" element={<DashboardUsers />} /> {/* Ruta renombrada */}
-          <Route path="vendors" element={<DashboardVendors />} />
-          <Route path="orders" element={<DashboardOrders />} /> {/* Nueva ruta */}
-          <Route path="statistics" element={<DashboardStatistics />} />
-          <Route path="messages" element={<DashboardMessages />} />
-          <Route path="profile" element={<DashboardProfile />} />
-          <Route path="settings" element={<DashboardSettings />} />
-        </Route>
-        <Route path="*" element={<NotFoundPage />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="*" element={<div><h1>Minimal Not Found</h1></div>} />
       </Routes>
     </>
   );
