@@ -1,22 +1,49 @@
-import { Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
+import LandingPage from './pages/LandingPage';
+import AdminSecret from './pages/AdminSecret';
+import Login from './pages/Login';
+import { DashboardLayout } from './components/layout/DashboardLayout'; 
+import DashboardOverview from './pages/dashboard/Overview';
+import DashboardClients from './pages/dashboard/Clients';
+import DashboardVendors from './pages/dashboard/Vendors';
+import DashboardStatistics from './pages/dashboard/Statistics';
+import DashboardSettings from './pages/dashboard/Settings';
+import DashboardMessages from './pages/dashboard/Messages';
+import DashboardProfile from './pages/dashboard/Profile';
+import DashboardOrders from './pages/dashboard/Orders';
+import NotFoundPage from './pages/NotFound';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { Toaster } from 'react-hot-toast';
 
-// Componentes de página muy simples para prueba
-const HomePage = () => <div><h1>Home Page</h1><Link to="/about">Go to About</Link></div>;
-const AboutPage = () => <div><h1>About Page</h1><Link to="/">Go to Home</Link></div>;
-
 function App() {
-  console.log("[App.tsx] Rendering simplified App component.");
   return (
     <>
       <Toaster position="top-right" />
-      <nav>
-        <Link to="/">Home</Link> | <Link to="/about">About</Link>
-      </nav>
       <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="*" element={<div><h1>Minimal Not Found</h1></div>} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/admin-secret" element={<AdminSecret />} />
+        <Route path="/login" element={<Login />} />
+        
+        <Route 
+          path="/dashboard" 
+          element={
+            <ProtectedRoute>
+              <DashboardLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<DashboardOverview />} />
+          <Route path="clients" element={<DashboardClients />} />
+          <Route path="vendors" element={<DashboardVendors />} />
+          <Route path="orders" element={<DashboardOrders />} />
+          <Route path="statistics" element={<DashboardStatistics />} />
+          <Route path="messages" element={<DashboardMessages />} />
+          <Route path="profile" element={<DashboardProfile />} />
+          <Route path="settings" element={<DashboardSettings />} />
+          {/* Considera añadir una ruta catch-all dentro del dashboard si es necesario */}
+          {/* <Route path="*" element={<NotFoundPage />} /> */} 
+        </Route>
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </>
   );
