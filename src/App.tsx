@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import AdminSecret from './pages/AdminSecret';
 import Login from './pages/Login';
+import Signup from './pages/Signup'; // Importar Signup
 import { DashboardLayout } from './components/layout/DashboardLayout'; 
 import DashboardOverview from './pages/dashboard/Overview';
 import DashboardClients from './pages/dashboard/Clients';
@@ -23,6 +24,7 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/admin-secret" element={<AdminSecret />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} /> {/* Nueva ruta para Signup */}
         
         <Route 
           path="/dashboard" 
@@ -40,8 +42,6 @@ function App() {
           <Route path="messages" element={<DashboardMessages />} />
           <Route path="profile" element={<DashboardProfile />} />
           <Route path="settings" element={<DashboardSettings />} />
-          {/* Considera añadir una ruta catch-all dentro del dashboard si es necesario */}
-          {/* <Route path="*" element={<NotFoundPage />} /> */} 
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
