@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import { Bell, Check } from 'lucide-react';
+import { Bell, Check, MessageSquare } from 'lucide-react'; // Added MessageSquare for message type
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -11,23 +11,32 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/context/AuthContext'; // Assuming useAuth provides the user object
 import { toast } from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom'; // For navigation
+
+interface NotificationData {
+  message_id?: string;
+  sender_id?: string; // Crucial for opening the conversation
+  product_id?: string;
+  // Add other potential fields from your notification data
+}
 
 interface Notification {
   id: string;
-  // user_id: string; // Asumo que target_id es el user_id del admin o el perfil relevante
+  user_id: string; 
   title: string;
-  message: string; // Usaré 'content' como 'message'
-  type: string;
-  read: boolean; // Usaré 'read_status' como 'read'
+  message: string; 
+  type: string; // e.g., 'message', 'product_approval', 'admin_message'
+  read: boolean; 
   created_at: string;
-  data?: any;
+  data?: NotificationData; // Parsed JSONB data
 }
 
 export const NotificationBell = () => {
-  const { user } = useAuth();
+  const { user } = useAuth(); // Admin user
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -35,19 +44,23 @@ export const NotificationBell = () => {
     if (!user) return;
 
     const fetchNotifications = async () => {
-      const { data, error, count } = await supabase
+      const { data, error } = await supabase
         .from('notifications')
-        .select('*', { count: 'exact' })
-        .eq('user_id', user.id) // Filtrar por el admin actual
-        // .eq('role', 'admin') // O si tienes un campo 'role'
+        .select('*')
+        .eq('user_id', user.id) 
         .order('created_at', { ascending: false })
-        .limit(10); // Limitar para no sobrecargar
+        .limit(10); 
 
       if (error) {
         toast.error("Failed to load notifications: " + error.message);
       } else {
-        setNotifications(data as Notification[] || []);
-        const unread = data?.filter(n => !n.read_status).length || 0;
+        const parsedNotifications = data?.map(n => ({
+          ...n,
+          read: n.read_status ?? n.read ?? false, // Adapt to your column name for read status
+          data: typeof n.data === 'string' ? JSON.parse(n.data) : n.data // Ensure data is parsed if it's a string
+        })) as Notification[] || [];
+        setNotifications(parsedNotifications);
+        const unread = parsedNotifications?.filter(n => !n.read).length || 0;
         setUnreadCount(unread);
       }
     };
@@ -55,36 +68,58 @@ export const NotificationBell = () => {
     fetchNotifications();
 
     const notificationsChannel = supabase
-      .channel('public:notifications:admin')
+      .channel(`public:notifications:user:${user.id}`) // Unique channel per user
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
         (payload) => {
+          console.log("New notification received via channel", payload);
           toast.info("You have a new notification!");
           fetchNotifications();
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`Subscribed to notifications for user ${user.id}`);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('Notification channel error:', err);
+        }
+      });
 
     return () => {
       supabase.removeChannel(notificationsChannel);
     };
   }, [user]);
 
-  const markAsRead = async (notificationId: string) => {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ read_status: true })
-      .eq('id', notificationId);
+  const handleNotificationClick = async (notification: Notification) => {
+    // Mark as read first
+    if (!notification.read) {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read_status: true, read: true }) // Update both possible column names
+        .eq('id', notification.id);
 
-    if (error) {
-      toast.error("Failed to mark notification as read.");
-    } else {
-      setNotifications(prev => 
-        prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      if (error) {
+        toast.error("Failed to mark notification as read.");
+      } else {
+        setNotifications(prev => 
+          prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
     }
+
+    // Navigate if it's a message type and has sender_id
+    // Adjust 'type' based on what your 'handle_new_message' trigger sets for message notifications
+    if ((notification.type === 'message' || notification.type === 'new_message' || notification.type === 'admin_message') && notification.data?.sender_id) {
+      console.log("Navigating to message from sender:", notification.data.sender_id);
+      navigate('/dashboard/messages', { state: { openConversationWith: notification.data.sender_id } });
+    } else if (notification.type === 'product_approval' && notification.data?.product_id) {
+      // Example: navigate to a product page
+      // navigate(`/dashboard/products/${notification.data.product_id}`);
+      toast.info("Product related notification clicked. Navigation to product page not yet implemented.");
+    }
+    // Add other navigation logic for different notification types
   };
   
   const markAllAsRead = async () => {
@@ -94,7 +129,7 @@ export const NotificationBell = () => {
 
     const { error } = await supabase
       .from('notifications')
-      .update({ read_status: true })
+      .update({ read_status: true, read: true }) // Update both possible column names
       .in('id', unreadNotificationIds)
       .eq('user_id', user.id);
     
@@ -107,6 +142,13 @@ export const NotificationBell = () => {
     }
   };
 
+  const getNotificationIcon = (type: string) => {
+    if (type === 'message' || type === 'new_message' || type === 'admin_message') {
+      return <MessageSquare className="h-4 w-4 text-blue-500" />;
+    }
+    // Add other icons for other types
+    return <Bell className="h-4 w-4 text-brand-orange" />;
+  };
 
   return (
     <DropdownMenu>
@@ -140,11 +182,10 @@ export const NotificationBell = () => {
                   "flex items-start gap-3 py-3 px-4 hover:bg-accent/50 smooth-hover text-foreground/80 cursor-pointer",
                   !notif.read && "bg-accent/30 dark:bg-accent/20"
                 )}
-                onClick={() => !notif.read && markAsRead(notif.id)}
+                onClick={() => handleNotificationClick(notif)} // Updated onClick handler
               >
-                {/* Icon based on type could be added here */}
                 <div className="flex-shrink-0 pt-0.5">
-                  {!notif.read ? <Bell className="h-4 w-4 text-brand-orange" /> : <Check className="h-4 w-4 text-muted-foreground" />}
+                  {!notif.read ? getNotificationIcon(notif.type) : <Check className="h-4 w-4 text-muted-foreground" />}
                 </div>
                 <div className="flex-grow">
                   <p className={cn("text-sm font-medium", !notif.read && "text-foreground")}>{notif.title}</p>

@@ -1,10 +1,11 @@
 "use client";
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom'; // Import useNavigate
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Send, UserCheck, Users, Briefcase, Loader2 } from 'lucide-react';
+import { Send, UserCheck, Briefcase, Loader2, Check } from 'lucide-react'; // Added Check
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'react-hot-toast';
@@ -20,7 +21,8 @@ interface Message {
   product_id?: string;
   sender_profile?: { full_name?: string; avatar_url?: string; is_vendor?: boolean };
   recipient_profile?: { full_name?: string; avatar_url?: string; is_vendor?: boolean };
-  read_at?: string | null; // Para marcar como leído
+  read_at?: string | null; 
+  message_type?: string; // Added for consistency
 }
 
 interface Conversation {
@@ -34,7 +36,10 @@ interface Conversation {
 }
 
 export default function DashboardMessages() {
-  const { user, profile: adminProfile } = useAuth(); // Usar user del contexto, que es el admin logueado
+  const { user, profile: adminProfile } = useAuth(); 
+  const location = useLocation();
+  const navigate = useNavigate(); // For clearing navigation state
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -48,21 +53,19 @@ export default function DashboardMessages() {
   const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
-
+  }, [messages, scrollToBottom]);
 
   const startLoadingTimer = () => {
     if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
     loadingTimerRef.current = setTimeout(() => {
       setShowLoadingIndicator(true);
-    }, 500);
+    }, 300); // Shorter delay
   };
 
   const stopLoadingTimer = () => {
@@ -70,75 +73,25 @@ export default function DashboardMessages() {
     setShowLoadingIndicator(false);
   };
 
-  const fetchConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async (participantToSelect?: string) => {
     if (!user) return;
     setIsLoadingConversations(true);
-    startLoadingTimer();
+    if (!selectedConversation && !participantToSelect) startLoadingTimer();
 
     try {
-      // Usamos una función RPC para obtener las conversaciones y el conteo de no leídos
-      // Esto es más eficiente que procesarlo en el cliente.
-      // Asegúrate de que la función 'get_conversations_for_user' exista en tu DB.
-      // Si no existe, podemos volver al método anterior y calcular unread_count en el cliente.
       const { data, error } = await supabase.rpc('get_conversations_for_user', {
         user_id_param: user.id
       });
 
-      stopLoadingTimer();
+      if (!selectedConversation && !participantToSelect) stopLoadingTimer();
       if (error) {
         console.error("Error fetching conversations via RPC:", error);
         toast.error("Failed to load conversations: " + error.message);
-        // Fallback a la lógica anterior si RPC falla o no existe
-        const { data: manualData, error: manualError } = await supabase
-          .from('contact_messages')
-          .select(`
-            *,
-            sender_profile:profiles!contact_messages_sender_id_fkey(full_name, avatar_url, is_vendor),
-            recipient_profile:profiles!contact_messages_recipient_id_fkey(full_name, avatar_url, is_vendor)
-          `)
-          .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
-          .order('created_at', { ascending: false });
-        
-        if (manualError) {
-          toast.error("Failed to load conversations (manual): " + manualError.message);
-          setConversations([]);
-        } else {
-          const convMap = new Map<string, Conversation>();
-          manualData?.forEach(msg => {
-            const participantIsSender = msg.sender_id !== user.id;
-            const participantProfile = participantIsSender ? msg.sender_profile : msg.recipient_profile;
-            const participantId = participantIsSender ? msg.sender_id : msg.recipient_id;
-
-            if (!participantId || participantId === user.id) return;
-
-            if (!convMap.has(participantId)) {
-              convMap.set(participantId, {
-                participant_id: participantId,
-                participant_name: participantProfile?.full_name || 'Unknown User',
-                participant_avatar: participantProfile?.avatar_url,
-                is_vendor: participantProfile?.is_vendor,
-                last_message: msg.message,
-                last_message_time: msg.created_at,
-                unread_count: 0, 
-              });
-            }
-            const existingConvo = convMap.get(participantId);
-            if (existingConvo && new Date(msg.created_at) > new Date(existingConvo.last_message_time)) {
-              existingConvo.last_message = msg.message;
-              existingConvo.last_message_time = msg.created_at;
-            }
-            // Contar no leídos (simplificado, idealmente esto viene de la DB o RPC)
-            if (msg.recipient_id === user.id && !msg.read_at && existingConvo) {
-               existingConvo.unread_count = (existingConvo.unread_count || 0) + 1;
-            }
-          });
-          setConversations(Array.from(convMap.values()).sort((a,b) => new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()));
-        }
+        setConversations([]);
       } else {
-        // Procesar datos de la función RPC
         const mappedConversations = data.map((convo: any) => ({
           participant_id: convo.other_user_id,
-          participant_name: convo.other_user_profile?.full_name || 'Unknown User', // Asume que RPC devuelve perfil
+          participant_name: convo.other_user_profile?.full_name || 'Unknown User',
           participant_avatar: convo.other_user_profile?.avatar_url,
           is_vendor: convo.other_user_profile?.is_vendor,
           last_message: convo.last_message_content,
@@ -146,19 +99,28 @@ export default function DashboardMessages() {
           unread_count: convo.unread_count || 0,
         }));
         setConversations(mappedConversations);
+
+        if (participantToSelect) {
+          const convoToSelect = mappedConversations.find(c => c.participant_id === participantToSelect);
+          if (convoToSelect) {
+            setSelectedConversation(convoToSelect);
+          } else {
+            console.warn(`Conversation with participant ${participantToSelect} not found after fetching.`);
+          }
+        }
       }
     } catch (e: any) {
-      stopLoadingTimer();
+      if (!selectedConversation && !participantToSelect) stopLoadingTimer();
       toast.error("An unexpected error occurred while fetching conversations.");
       console.error(e);
       setConversations([]);
     } finally {
       setIsLoadingConversations(false);
-      stopLoadingTimer();
+      if (!selectedConversation && !participantToSelect) stopLoadingTimer();
     }
-  }, [user]);
+  }, [user, selectedConversation]);
 
-  const markMessagesAsRead = async (participantId: string) => {
+  const markMessagesAsRead = useCallback(async (participantId: string) => {
     if (!user || !participantId) return;
     try {
       const { error } = await supabase
@@ -166,18 +128,16 @@ export default function DashboardMessages() {
         .update({ read_at: new Date().toISOString() })
         .eq('recipient_id', user.id)
         .eq('sender_id', participantId)
-        .is('read_at', null); // Solo actualiza los no leídos
+        .is('read_at', null); 
 
       if (error) {
         console.error("Error marking messages as read:", error);
       } else {
-        // Actualizar UI: quitar contador de no leídos para esta conversación
         setConversations(prevConvos => 
           prevConvos.map(c => 
             c.participant_id === participantId ? { ...c, unread_count: 0 } : c
           )
         );
-        // Marcar mensajes individuales como leídos en el estado local
         setMessages(prevMsgs => 
             prevMsgs.map(m => 
                 m.sender_id === participantId && m.recipient_id === user.id && !m.read_at 
@@ -189,7 +149,7 @@ export default function DashboardMessages() {
     } catch (e) {
       console.error("Exception marking messages as read:", e);
     }
-  };
+  }, [user]);
 
   const fetchMessages = useCallback(async (participantId: string) => {
     if (!user || !participantId) return;
@@ -200,8 +160,8 @@ export default function DashboardMessages() {
         .from('contact_messages')
         .select(`
           *,
-          sender_profile:profiles!contact_messages_sender_id_fkey(full_name, avatar_url, is_vendor),
-          recipient_profile:profiles!contact_messages_recipient_id_fkey(full_name, avatar_url, is_vendor)
+          sender_profile:profiles!contact_messages_sender_id_fkey(id, full_name, avatar_url, is_vendor),
+          recipient_profile:profiles!contact_messages_recipient_id_fkey(id, full_name, avatar_url, is_vendor)
         `)
         .or(`(sender_id.eq.${user.id},recipient_id.eq.${participantId}),(sender_id.eq.${participantId},recipient_id.eq.${user.id})`)
         .order('created_at', { ascending: true });
@@ -223,11 +183,16 @@ export default function DashboardMessages() {
       setIsLoadingMessages(false);
       stopLoadingTimer();
     }
-  }, [user]);
+  }, [user, markMessagesAsRead]);
 
   useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+    const participantToSelect = location.state?.openConversationWith;
+    fetchConversations(participantToSelect);
+    if (participantToSelect) {
+      // Clear the state after using it
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [fetchConversations, location.state, location.pathname, navigate]);
 
   useEffect(() => {
     if (selectedConversation) {
@@ -241,38 +206,36 @@ export default function DashboardMessages() {
     if (!user) return;
 
     const messageChannel = supabase
-      .channel('public:contact_messages:admin_dashboard') // Canal específico
+      .channel(`public:contact_messages:admin_dashboard:${user.id}`) 
       .on(
         'postgres_changes',
         { 
           event: 'INSERT', 
           schema: 'public', 
           table: 'contact_messages',
-          // Filtro para escuchar mensajes donde el admin es el sender o receiver
           filter: `or(recipient_id.eq.${user.id},sender_id.eq.${user.id})`
         },
         (payload) => {
           console.log('[Admin Messages] New message event received (real-time):', payload);
           const newMessageData = payload.new as Message;
           
-          // Si el mensaje pertenece a la conversación actualmente seleccionada
+          fetchConversations(selectedConversation?.participant_id); // Refresh conversations to update unread counts and last message
+
           if (selectedConversation && 
               ((newMessageData.sender_id === user.id && newMessageData.recipient_id === selectedConversation.participant_id) ||
                (newMessageData.sender_id === selectedConversation.participant_id && newMessageData.recipient_id === user.id))
           ) {
-            // Añadir el nuevo mensaje a la lista de mensajes de la conversación activa
-            setMessages(prev => [...prev, newMessageData]);
-            // Si el admin es el receptor del nuevo mensaje en la conversación activa, marcarlo como leído
+            setMessages(prev => {
+              // Avoid duplicates if message already added optimistically or by another fetch
+              if (prev.find(m => m.id === newMessageData.id)) return prev;
+              return [...prev, newMessageData];
+            });
             if (newMessageData.recipient_id === user.id) {
               markMessagesAsRead(newMessageData.sender_id);
             }
           } else if (newMessageData.recipient_id === user.id) {
-            // Si el mensaje es para el admin pero no es de la conversación activa,
-            // mostrar una notificación y actualizar la lista de conversaciones para el contador.
             toast.info(`New message from ${newMessageData.sender_profile?.full_name || 'a user'}`);
           }
-          // Siempre refrescar la lista de conversaciones para actualizar el último mensaje y el contador de no leídos
-          fetchConversations(); 
         }
       )
       .subscribe((status, err) => {
@@ -281,15 +244,13 @@ export default function DashboardMessages() {
         }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.error('[Admin Messages] Subscription error:', status, err);
-          toast.error('Real-time connection error for messages.');
         }
       });
 
     return () => {
-      console.log('[Admin Messages] Unsubscribing from contact_messages channel.');
       supabase.removeChannel(messageChannel);
     };
-  }, [user, selectedConversation, fetchConversations]);
+  }, [user, selectedConversation, fetchConversations, markMessagesAsRead]);
 
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -297,31 +258,52 @@ export default function DashboardMessages() {
     if (!newMessage.trim() || !user || !selectedConversation || !adminProfile) return;
 
     setIsSending(true);
-    const { error } = await supabase
+    const tempId = `temp-${Date.now()}`; // Optimistic update ID
+    const messageToSend: Partial<Message> = {
+      id: tempId, // Temporary ID for optimistic update
+      sender_id: user.id, 
+      recipient_id: selectedConversation.participant_id,
+      message: newMessage,
+      created_at: new Date().toISOString(),
+      message_type: adminProfile.is_admin && selectedConversation.is_vendor ? 'admin_to_vendor' 
+                    : adminProfile.is_admin && !selectedConversation.is_vendor ? 'admin_to_user'
+                    : 'unknown',
+      sender_profile: { // Optimistic sender profile
+        full_name: adminProfile.full_name,
+        avatar_url: adminProfile.avatar_url,
+        is_vendor: adminProfile.is_admin // Admins are not vendors in this context
+      }
+    };
+
+    // Optimistic update
+    setMessages(prev => [...prev, messageToSend as Message]);
+    setNewMessage('');
+
+    const { data: insertedMessage, error } = await supabase
       .from('contact_messages')
       .insert({
-        sender_id: user.id, // Admin es el sender
-        recipient_id: selectedConversation.participant_id,
-        message: newMessage,
-        // Determinar message_type basado en si el adminProfile existe y es admin
-        // y si el receptor (selectedConversation) es un vendor.
-        message_type: adminProfile.is_admin && selectedConversation.is_vendor ? 'admin_to_vendor' 
-                      : adminProfile.is_admin && !selectedConversation.is_vendor ? 'admin_to_user'
-                      : 'unknown', // Fallback, aunque no debería ocurrir si admin está logueado
-        // admin_id: user.id, // Si tienes una columna específica para admin_id
-      });
+        sender_id: messageToSend.sender_id,
+        recipient_id: messageToSend.recipient_id,
+        message: messageToSend.message,
+        message_type: messageToSend.message_type,
+      })
+      .select()
+      .single();
     
     setIsSending(false);
     if (error) {
       toast.error("Failed to send message: " + error.message);
-    } else {
-      setNewMessage('');
-      // El listener de real-time debería encargarse de añadir el mensaje visualmente
-      // y de actualizar la lista de conversaciones.
+      // Revert optimistic update
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setNewMessage(messageToSend.message!); // Put message back in input
+    } else if (insertedMessage) {
+      // Replace temp message with actual message from DB
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...insertedMessage, sender_profile: messageToSend.sender_profile } as Message : m));
+      fetchConversations(selectedConversation.participant_id); // Update conversation list
     }
   };
 
-  const isOverallLoading = isLoadingConversations && conversations.length === 0;
+  const isOverallLoading = isLoadingConversations && conversations.length === 0 && !selectedConversation;
 
   if (isOverallLoading && !showLoadingIndicator) {
     return <div className="h-[calc(100vh-10rem)] flex items-center justify-center"><p className="text-muted-foreground">Initializing messages...</p></div>;
@@ -339,7 +321,7 @@ export default function DashboardMessages() {
             <CardTitle className="text-foreground">Conversations</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {isLoadingConversations && showLoadingIndicator && (
+            {isLoadingConversations && conversations.length === 0 && showLoadingIndicator && (
               <div className="p-4 text-center text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin mx-auto my-4" />
                 Loading conversations...
