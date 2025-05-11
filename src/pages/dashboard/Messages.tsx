@@ -4,11 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Send, UserCheck, Users, Briefcase, Loader2 } from 'lucide-react'; // Añadido Loader2
+import { Send, UserCheck, Users, Briefcase, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'react-hot-toast';
-import { Loading } from '@/components/Loading'; // Usaremos el componente Loading general
+import { Loading } from '@/components/Loading';
 import { cn } from '@/lib/utils';
 
 interface Message {
@@ -20,6 +20,7 @@ interface Message {
   product_id?: string;
   sender_profile?: { full_name?: string; avatar_url?: string; is_vendor?: boolean };
   recipient_profile?: { full_name?: string; avatar_url?: string; is_vendor?: boolean };
+  read_at?: string | null; // Para marcar como leído
 }
 
 interface Conversation {
@@ -33,7 +34,7 @@ interface Conversation {
 }
 
 export default function DashboardMessages() {
-  const { user } = useAuth();
+  const { user, profile: adminProfile } = useAuth(); // Usar user del contexto, que es el admin logueado
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -45,12 +46,23 @@ export default function DashboardMessages() {
 
   const [isSending, setIsSending] = useState(false);
   const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
 
   const startLoadingTimer = () => {
     if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
     loadingTimerRef.current = setTimeout(() => {
       setShowLoadingIndicator(true);
-    }, 500); // Mostrar indicador después de 500ms
+    }, 500);
   };
 
   const stopLoadingTimer = () => {
@@ -64,50 +76,76 @@ export default function DashboardMessages() {
     startLoadingTimer();
 
     try {
-      const { data, error } = await supabase
-        .from('contact_messages') // Verificado: tabla contact_messages
-        .select(`
-          *,
-          sender_profile:profiles!contact_messages_sender_id_fkey(full_name, avatar_url, is_vendor),
-          recipient_profile:profiles!contact_messages_recipient_id_fkey(full_name, avatar_url, is_vendor)
-        `)
-        .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
-        .order('created_at', { ascending: false });
+      // Usamos una función RPC para obtener las conversaciones y el conteo de no leídos
+      // Esto es más eficiente que procesarlo en el cliente.
+      // Asegúrate de que la función 'get_conversations_for_user' exista en tu DB.
+      // Si no existe, podemos volver al método anterior y calcular unread_count en el cliente.
+      const { data, error } = await supabase.rpc('get_conversations_for_user', {
+        user_id_param: user.id
+      });
 
       stopLoadingTimer();
       if (error) {
+        console.error("Error fetching conversations via RPC:", error);
         toast.error("Failed to load conversations: " + error.message);
-        setConversations([]);
+        // Fallback a la lógica anterior si RPC falla o no existe
+        const { data: manualData, error: manualError } = await supabase
+          .from('contact_messages')
+          .select(`
+            *,
+            sender_profile:profiles!contact_messages_sender_id_fkey(full_name, avatar_url, is_vendor),
+            recipient_profile:profiles!contact_messages_recipient_id_fkey(full_name, avatar_url, is_vendor)
+          `)
+          .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
+          .order('created_at', { ascending: false });
+        
+        if (manualError) {
+          toast.error("Failed to load conversations (manual): " + manualError.message);
+          setConversations([]);
+        } else {
+          const convMap = new Map<string, Conversation>();
+          manualData?.forEach(msg => {
+            const participantIsSender = msg.sender_id !== user.id;
+            const participantProfile = participantIsSender ? msg.sender_profile : msg.recipient_profile;
+            const participantId = participantIsSender ? msg.sender_id : msg.recipient_id;
+
+            if (!participantId || participantId === user.id) return;
+
+            if (!convMap.has(participantId)) {
+              convMap.set(participantId, {
+                participant_id: participantId,
+                participant_name: participantProfile?.full_name || 'Unknown User',
+                participant_avatar: participantProfile?.avatar_url,
+                is_vendor: participantProfile?.is_vendor,
+                last_message: msg.message,
+                last_message_time: msg.created_at,
+                unread_count: 0, 
+              });
+            }
+            const existingConvo = convMap.get(participantId);
+            if (existingConvo && new Date(msg.created_at) > new Date(existingConvo.last_message_time)) {
+              existingConvo.last_message = msg.message;
+              existingConvo.last_message_time = msg.created_at;
+            }
+            // Contar no leídos (simplificado, idealmente esto viene de la DB o RPC)
+            if (msg.recipient_id === user.id && !msg.read_at && existingConvo) {
+               existingConvo.unread_count = (existingConvo.unread_count || 0) + 1;
+            }
+          });
+          setConversations(Array.from(convMap.values()).sort((a,b) => new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()));
+        }
       } else {
-        const convMap = new Map<string, Conversation>();
-        data?.forEach(msg => {
-          const participant = msg.sender_id === user.id ? msg.recipient_profile : msg.sender_profile;
-          const participantId = msg.sender_id === user.id ? msg.recipient_id : msg.sender_id;
-
-          if (!participantId || participantId === user.id) return;
-
-          if (!convMap.has(participantId)) {
-            convMap.set(participantId, {
-              participant_id: participantId,
-              participant_name: participant?.full_name || 'Unknown User',
-              participant_avatar: participant?.avatar_url,
-              is_vendor: participant?.is_vendor,
-              last_message: msg.message,
-              last_message_time: msg.created_at,
-              unread_count: 0, // Implementar conteo de no leídos es más complejo y requiere otra query o función RPC
-            });
-          }
-          // Lógica para actualizar last_message si es más reciente y unread_count
-          const existingConvo = convMap.get(participantId);
-          if (existingConvo && new Date(msg.created_at) > new Date(existingConvo.last_message_time)) {
-            existingConvo.last_message = msg.message;
-            existingConvo.last_message_time = msg.created_at;
-          }
-          // if (msg.recipient_id === user.id && !msg.read_status) { // Asumiendo un campo read_status
-          //  existingConvo.unread_count++;
-          // }
-        });
-        setConversations(Array.from(convMap.values()).sort((a,b) => new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()));
+        // Procesar datos de la función RPC
+        const mappedConversations = data.map((convo: any) => ({
+          participant_id: convo.other_user_id,
+          participant_name: convo.other_user_profile?.full_name || 'Unknown User', // Asume que RPC devuelve perfil
+          participant_avatar: convo.other_user_profile?.avatar_url,
+          is_vendor: convo.other_user_profile?.is_vendor,
+          last_message: convo.last_message_content,
+          last_message_time: convo.last_message_created_at,
+          unread_count: convo.unread_count || 0,
+        }));
+        setConversations(mappedConversations);
       }
     } catch (e: any) {
       stopLoadingTimer();
@@ -120,6 +158,39 @@ export default function DashboardMessages() {
     }
   }, [user]);
 
+  const markMessagesAsRead = async (participantId: string) => {
+    if (!user || !participantId) return;
+    try {
+      const { error } = await supabase
+        .from('contact_messages')
+        .update({ read_at: new Date().toISOString() })
+        .eq('recipient_id', user.id)
+        .eq('sender_id', participantId)
+        .is('read_at', null); // Solo actualiza los no leídos
+
+      if (error) {
+        console.error("Error marking messages as read:", error);
+      } else {
+        // Actualizar UI: quitar contador de no leídos para esta conversación
+        setConversations(prevConvos => 
+          prevConvos.map(c => 
+            c.participant_id === participantId ? { ...c, unread_count: 0 } : c
+          )
+        );
+        // Marcar mensajes individuales como leídos en el estado local
+        setMessages(prevMsgs => 
+            prevMsgs.map(m => 
+                m.sender_id === participantId && m.recipient_id === user.id && !m.read_at 
+                ? { ...m, read_at: new Date().toISOString() } 
+                : m
+            )
+        );
+      }
+    } catch (e) {
+      console.error("Exception marking messages as read:", e);
+    }
+  };
+
   const fetchMessages = useCallback(async (participantId: string) => {
     if (!user || !participantId) return;
     setIsLoadingMessages(true);
@@ -129,8 +200,8 @@ export default function DashboardMessages() {
         .from('contact_messages')
         .select(`
           *,
-          sender_profile:profiles!contact_messages_sender_id_fkey(full_name, avatar_url),
-          recipient_profile:profiles!contact_messages_recipient_id_fkey(full_name, avatar_url)
+          sender_profile:profiles!contact_messages_sender_id_fkey(full_name, avatar_url, is_vendor),
+          recipient_profile:profiles!contact_messages_recipient_id_fkey(full_name, avatar_url, is_vendor)
         `)
         .or(`(sender_id.eq.${user.id},recipient_id.eq.${participantId}),(sender_id.eq.${participantId},recipient_id.eq.${user.id})`)
         .order('created_at', { ascending: true });
@@ -141,9 +212,7 @@ export default function DashboardMessages() {
         setMessages([]);
       } else {
         setMessages(data as Message[] || []);
-        // Aquí podrías marcar los mensajes como leídos
-        // await supabase.from('contact_messages').update({ read_status: true }).match({ recipient_id: user.id, sender_id: participantId, read_status: false });
-        // fetchConversations(); // Para actualizar el contador de no leídos
+        await markMessagesAsRead(participantId);
       }
     } catch (e: any) {
       stopLoadingTimer();
@@ -154,7 +223,7 @@ export default function DashboardMessages() {
       setIsLoadingMessages(false);
       stopLoadingTimer();
     }
-  }, [user, fetchConversations]);
+  }, [user]);
 
   useEffect(() => {
     fetchConversations();
@@ -172,33 +241,52 @@ export default function DashboardMessages() {
     if (!user) return;
 
     const messageChannel = supabase
-      .channel('public:contact_messages')
+      .channel('public:contact_messages:admin_dashboard') // Canal específico
       .on(
         'postgres_changes',
         { 
           event: 'INSERT', 
           schema: 'public', 
-          table: 'contact_messages', 
-          // El filtro debe ser más general para actualizar la lista de conversaciones
-          // filter: `or(recipient_id.eq.${user.id},sender_id.eq.${user.id})`
+          table: 'contact_messages',
+          // Filtro para escuchar mensajes donde el admin es el sender o receiver
+          filter: `or(recipient_id.eq.${user.id},sender_id.eq.${user.id})`
         },
         (payload) => {
-          console.log('New message received (real-time):', payload);
-          // Si el mensaje pertenece a la conversación seleccionada, añadirlo
+          console.log('[Admin Messages] New message event received (real-time):', payload);
           const newMessageData = payload.new as Message;
+          
+          // Si el mensaje pertenece a la conversación actualmente seleccionada
           if (selectedConversation && 
               ((newMessageData.sender_id === user.id && newMessageData.recipient_id === selectedConversation.participant_id) ||
                (newMessageData.sender_id === selectedConversation.participant_id && newMessageData.recipient_id === user.id))
           ) {
+            // Añadir el nuevo mensaje a la lista de mensajes de la conversación activa
             setMessages(prev => [...prev, newMessageData]);
+            // Si el admin es el receptor del nuevo mensaje en la conversación activa, marcarlo como leído
+            if (newMessageData.recipient_id === user.id) {
+              markMessagesAsRead(newMessageData.sender_id);
+            }
+          } else if (newMessageData.recipient_id === user.id) {
+            // Si el mensaje es para el admin pero no es de la conversación activa,
+            // mostrar una notificación y actualizar la lista de conversaciones para el contador.
+            toast.info(`New message from ${newMessageData.sender_profile?.full_name || 'a user'}`);
           }
-          // Siempre refrescar la lista de conversaciones para actualizar el último mensaje y potencialmente el orden
+          // Siempre refrescar la lista de conversaciones para actualizar el último mensaje y el contador de no leídos
           fetchConversations(); 
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Admin Messages] Subscribed to contact_messages channel for admin!');
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('[Admin Messages] Subscription error:', status, err);
+          toast.error('Real-time connection error for messages.');
+        }
+      });
 
     return () => {
+      console.log('[Admin Messages] Unsubscribing from contact_messages channel.');
       supabase.removeChannel(messageChannel);
     };
   }, [user, selectedConversation, fetchConversations]);
@@ -206,16 +294,21 @@ export default function DashboardMessages() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !user || !selectedConversation) return;
+    if (!newMessage.trim() || !user || !selectedConversation || !adminProfile) return;
 
     setIsSending(true);
     const { error } = await supabase
       .from('contact_messages')
       .insert({
-        sender_id: user.id,
+        sender_id: user.id, // Admin es el sender
         recipient_id: selectedConversation.participant_id,
         message: newMessage,
-        message_type: selectedConversation.is_vendor ? 'admin_to_vendor' : 'admin_to_user',
+        // Determinar message_type basado en si el adminProfile existe y es admin
+        // y si el receptor (selectedConversation) es un vendor.
+        message_type: adminProfile.is_admin && selectedConversation.is_vendor ? 'admin_to_vendor' 
+                      : adminProfile.is_admin && !selectedConversation.is_vendor ? 'admin_to_user'
+                      : 'unknown', // Fallback, aunque no debería ocurrir si admin está logueado
+        // admin_id: user.id, // Si tienes una columna específica para admin_id
       });
     
     setIsSending(false);
@@ -228,13 +321,12 @@ export default function DashboardMessages() {
     }
   };
 
-  // Estado de carga principal para la UI general
   const isOverallLoading = isLoadingConversations && conversations.length === 0;
 
-  if (isOverallLoading && !showLoadingIndicator) { // Si está cargando pero el timer no ha pasado, no mostrar nada aún
+  if (isOverallLoading && !showLoadingIndicator) {
     return <div className="h-[calc(100vh-10rem)] flex items-center justify-center"><p className="text-muted-foreground">Initializing messages...</p></div>;
   }
-  if (isOverallLoading && showLoadingIndicator) { // Si el timer pasó, mostrar Loading
+  if (isOverallLoading && showLoadingIndicator) {
     return <Loading />;
   }
 
@@ -242,7 +334,7 @@ export default function DashboardMessages() {
     <div className="h-[calc(100vh-10rem)] flex flex-col">
       <h1 className="text-3xl font-bold mb-6 text-foreground">Messages</h1>
       <Card className="flex-grow flex overflow-hidden bg-card/70 backdrop-blur-sm border-border/30 shadow-xl">
-        <div className="w-1/3 border-r border-border/30 bg-card/50 overflow-y-auto">
+        <div className="w-full md:w-1/3 border-r border-border/30 bg-card/50 overflow-y-auto">
           <CardHeader className="border-b border-border/30 sticky top-0 bg-card/80 backdrop-blur-sm z-10">
             <CardTitle className="text-foreground">Conversations</CardTitle>
           </CardHeader>
@@ -272,19 +364,25 @@ export default function DashboardMessages() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-grow overflow-hidden">
-                  <p className="font-semibold text-foreground truncate flex items-center">
-                    {convo.participant_name}
-                    {convo.is_vendor ? <Briefcase className="h-3 w-3 ml-1.5 text-muted-foreground" /> : <UserCheck className="h-3 w-3 ml-1.5 text-muted-foreground" />}
-                  </p>
+                  <div className="flex justify-between items-center">
+                    <p className="font-semibold text-foreground truncate flex items-center">
+                      {convo.participant_name}
+                      {convo.is_vendor ? <Briefcase className="h-3 w-3 ml-1.5 text-muted-foreground" /> : <UserCheck className="h-3 w-3 ml-1.5 text-muted-foreground" />}
+                    </p>
+                    {convo.unread_count > 0 && (
+                      <span className="bg-brand-orange text-xs text-white font-bold rounded-full px-2 py-0.5">
+                        {convo.unread_count}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground truncate">{convo.last_message}</p>
                 </div>
-                {/* {convo.unread_count > 0 && ( ... ) } */}
               </div>
             ))}
           </CardContent>
         </div>
 
-        <div className="w-2/3 flex flex-col">
+        <div className="hidden md:flex w-2/3 flex-col">
           {selectedConversation ? (
             <>
               <CardHeader className="border-b border-border/30 sticky top-0 bg-card/80 backdrop-blur-sm z-10">
@@ -316,10 +414,12 @@ export default function DashboardMessages() {
                         msg.sender_id === user?.id ? 'text-right' : 'text-left'
                       )}>
                         {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {msg.sender_id === user?.id && msg.read_at && <Check className="inline h-3 w-3 ml-1 text-blue-300" />}
                       </p>
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} />
               </CardContent>
               <form onSubmit={handleSendMessage} className="border-t border-border/30 p-4 bg-card">
                 <div className="flex items-center space-x-2">
