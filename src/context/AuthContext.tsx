@@ -32,62 +32,41 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [_isLoading, _setIsLoading] = useState(true);
 
-  // Wrapper to log isLoading changes
-  const setIsLoading = (loadingState: boolean, from: string) => {
-    console.log(`[AuthContext] setIsLoading called from "${from}". New state: ${loadingState}`);
-    _setIsLoading(loadingState);
+  const setIsLoading = (loading: boolean, from: string) => {
+    console.log(`[AuthContext] setIsLoading from "${from}": ${loading}`);
+    _setIsLoading(loading);
   };
-  const isLoading = _isLoading; // Expose the original isLoading name
-
-  console.log("[AuthContext] Provider rendering. Initial isLoading:", isLoading);
+  const isLoading = _isLoading;
 
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
-    console.log(`[AuthContext] fetchProfile called for userId: ${userId}`);
-    if (!userId) {
-      console.log("[AuthContext] fetchProfile: No userId provided, returning null.");
-      return null;
-    }
+    if (!userId) return null;
     try {
       const { data, error, status } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
         .single();
 
-      if (error && status !== 406) { // 406 means single() found 0 rows, which is not an "error" for profile fetching if user just signed up
-        console.error("[AuthContext] fetchProfile: Error fetching profile:", error.message);
+      if (error && status !== 406) {
+        console.error("Error fetching profile:", error.message);
         return null;
       }
-      if (!data) {
-        console.log("[AuthContext] fetchProfile: No profile data found for user (this might be normal for new users).");
-        return null;
-      }
-      console.log("[AuthContext] fetchProfile: Profile data fetched:", data);
       return data as Profile;
     } catch (e) {
-      console.error("[AuthContext] fetchProfile: Exception fetching profile:", e);
+      console.error("Exception fetching profile:", e);
       return null;
     }
   }, []);
 
   useEffect(() => {
-    setIsLoading(true, "Main useEffect start");
+    setIsLoading(true, "useEffect start");
 
     const bootstrapAuth = async () => {
-      console.log("[AuthContext] bootstrapAuth: Starting...");
       try {
-        const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.error("[AuthContext] bootstrapAuth: Error getting initial session:", sessionError.message);
-        } else {
-          console.log("[AuthContext] bootstrapAuth: Initial session data:", initialSession);
-        }
-        
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
         setSession(initialSession);
         const activeUser = initialSession?.user ?? null;
         setUser(activeUser);
-        console.log("[AuthContext] bootstrapAuth: Active user set:", activeUser);
 
         if (activeUser) {
           const userProfile = await fetchProfile(activeUser.id);
@@ -98,9 +77,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setIsAdmin(false);
         }
       } catch (error) {
-        console.error("[AuthContext] bootstrapAuth: Exception during bootstrap:", error);
+        console.error("BootstrapAuth Error:", error);
       } finally {
-        setIsLoading(false, "bootstrapAuth finally");
+        setIsLoading(false, "useEffect finally");
       }
     };
 
@@ -108,10 +87,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (_event, currentSession) => {
-        console.log(`[AuthContext] onAuthStateChange: Event: ${_event}, Current session:`, currentSession);
-        
-        if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED') {
-          setIsLoading(true, `onAuthStateChange ${_event} start`);
+        console.log("Auth Event:", _event);
+        if (_event === "SIGNED_IN" || _event === "USER_UPDATED") {
+          setIsLoading(true, `Event ${_event} start`);
         }
 
         try {
@@ -120,61 +98,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUser(activeUser);
 
           if (activeUser) {
-            // Only fetch profile if it's a relevant event or if user changed
-            if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED' || (profile?.id !== activeUser.id)) {
-              console.log(`[AuthContext] onAuthStateChange: Fetching profile for user ${activeUser.id} due to event ${_event} or user change.`);
-              const userProfile = await fetchProfile(activeUser.id);
-              setProfile(userProfile);
-              setIsAdmin(userProfile?.is_admin === true);
-              console.log("[AuthContext] onAuthStateChange: Profile set:", userProfile, "IsAdmin:", userProfile?.is_admin === true);
-            } else {
-               console.log(`[AuthContext] onAuthStateChange: Profile for user ${activeUser.id} likely up-to-date, not re-fetching for event ${_event}.`);
-            }
-          } else { // No active user / SIGNED_OUT
+            const userProfile = await fetchProfile(activeUser.id);
+            setProfile(userProfile);
+            setIsAdmin(userProfile?.is_admin === true);
+          } else {
             setProfile(null);
             setIsAdmin(false);
           }
-        } catch (error) {
-            console.error(`[AuthContext] onAuthStateChange: Error processing event ${_event}:`, error);
+        } catch (err) {
+          console.error("AuthState Error:", err);
         } finally {
-            // CRITICAL: Ensure isLoading is set to false after processing events
-            // that might have set it to true (SIGNED_IN, USER_UPDATED) or after SIGNED_OUT.
-            if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED' || _event === 'SIGNED_OUT') {
-              setIsLoading(false, `onAuthStateChange ${_event} finally`);
-            }
-            // For INITIAL_SESSION, bootstrapAuth's finally block handles it.
-            // For TOKEN_REFRESHED or PASSWORD_RECOVERY, isLoading might not have been set to true,
-            // but if it was, this ensures it's reset. Consider if these events need explicit true/false.
-            // For now, focusing on SIGNED_IN.
+          if (_event === "SIGNED_IN" || _event === "USER_UPDATED" || _event === "SIGNED_OUT") {
+            setIsLoading(false, `Event ${_event} finally`);
+          }
         }
       }
     );
 
     return () => {
-      console.log("[AuthContext] Main useEffect cleanup: Unsubscribing auth listener.");
       authListener?.subscription?.unsubscribe();
     };
-  }, [fetchProfile]); // fetchProfile is stable due to useCallback
+  }, [fetchProfile]);
 
   const signOut = async () => {
-    setIsLoading(true, "signOut start"); 
+    setIsLoading(true, "signOut");
     try {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-          console.error("[AuthContext] signOut: Error signing out:", error.message);
-          // If signOut fails, we might still be in a loading state if onAuthStateChange doesn't fire
-          setIsLoading(false, "signOut error fallback"); 
-        } else {
-          console.log("[AuthContext] signOut: Successful. onAuthStateChange will handle SIGNED_OUT.");
-        }
-    } catch (error) {
-        console.error("[AuthContext] signOut: Exception during sign out:", error);
-        setIsLoading(false, "signOut exception fallback");
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("SignOut Error:", error.message);
+        setIsLoading(false, "signOut error");
+      }
+    } catch (err) {
+      console.error("SignOut Exception:", err);
+      setIsLoading(false, "signOut exception");
     }
-    // Note: onAuthStateChange for SIGNED_OUT should set isLoading to false.
-    // The fallbacks above are just in case.
   };
-  
+
   return (
     <AuthContext.Provider value={{ session, user, profile, isAdmin, isLoading, signOut }}>
       {children}
@@ -185,8 +144,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    // This specific error message is important for Dyad to recognize if the wrong AuthProvider is used.
-    throw new Error("useAuth must be used within an AuthProvider from the correct AuthContext.tsx");
+    throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
 };
