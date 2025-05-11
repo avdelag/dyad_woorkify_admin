@@ -1,13 +1,13 @@
 "use client";
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from "react";
 import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client"; // Corrected import path using alias
+import { supabase } from "@/integrations/supabase/client";
 
 export interface Profile {
   id: string;
   full_name?: string;
   avatar_url?: string;
-  is_admin?: boolean;
+  is_admin?: boolean; // Este es el campo clave
   created_at: string;
   business_name?: string;
   business_description?: string;
@@ -32,40 +32,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [_isLoading, _setIsLoading] = useState(true);
 
-  // Wrapper to log isLoading changes
   const setIsLoading = (loadingState: boolean, from: string) => {
     console.log(`[AuthContext] setIsLoading called from "${from}". New state: ${loadingState}`);
     _setIsLoading(loadingState);
   };
-  const isLoading = _isLoading; // Expose the original isLoading name
+  const isLoading = _isLoading;
 
   console.log("[AuthContext] Provider rendering. Initial isLoading:", isLoading);
 
   const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
     console.log(`[AuthContext] fetchProfile called for userId: ${userId}`);
     if (!userId) {
-      console.log("[AuthContext] fetchProfile: No userId provided, returning null.");
+      console.warn("[AuthContext] fetchProfile: No userId provided, returning null.");
       return null;
     }
     try {
       const { data, error, status } = await supabase
-        .from('profiles') // Ensure this table name is correct
+        .from('profiles') // Consultando la tabla 'profiles'
         .select('*')
         .eq('id', userId)
         .single();
 
       if (error && status !== 406) { 
-        console.error("[AuthContext] fetchProfile: Error fetching profile:", error.message);
+        console.error("[AuthContext] fetchProfile: Error fetching profile:", error.message, "Status:", status);
         return null;
       }
       if (!data) {
-        console.log("[AuthContext] fetchProfile: No profile data found for user.");
+        console.log("[AuthContext] fetchProfile: No profile data found for user (userId:", userId,"). This might be normal for new users or if the ID doesn't match.");
         return null;
       }
-      console.log("[AuthContext] fetchProfile: Profile data fetched:", data);
+      console.log("[AuthContext] fetchProfile: Profile data fetched for userId:", userId, "Data:", data);
       return data as Profile;
-    } catch (e) {
-      console.error("[AuthContext] fetchProfile: Exception fetching profile:", e);
+    } catch (e: any) {
+      console.error("[AuthContext] fetchProfile: Exception fetching profile for userId:", userId, "Error:", e.message);
       return null;
     }
   }, []);
@@ -92,14 +91,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (activeUser) {
           const userProfile = await fetchProfile(activeUser.id);
           setProfile(userProfile);
-          setIsAdmin(userProfile?.is_admin === true); // Check is_admin from profiles table
-          console.log("[AuthContext] bootstrapAuth: Profile set:", userProfile, "IsAdmin:", userProfile?.is_admin === true);
+          // Verifica userProfile y userProfile.is_admin
+          const adminStatus = userProfile?.is_admin === true;
+          setIsAdmin(adminStatus);
+          console.log("[AuthContext] bootstrapAuth: Profile processed. UserProfile:", userProfile, "IsAdmin flag from profile:", userProfile?.is_admin, "Calculated isAdmin:", adminStatus);
         } else {
           setProfile(null);
           setIsAdmin(false);
+          console.log("[AuthContext] bootstrapAuth: No active user. Profile and isAdmin reset.");
         }
-      } catch (error) {
-        console.error("[AuthContext] bootstrapAuth: Exception during bootstrap:", error);
+      } catch (error: any) {
+        console.error("[AuthContext] bootstrapAuth: Exception during bootstrap:", error.message);
       } finally {
         setIsLoading(false, "bootstrapAuth finally");
       }
@@ -125,17 +127,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               console.log(`[AuthContext] onAuthStateChange: Fetching profile for user ${activeUser.id} due to event ${_event} or user change.`);
               const userProfile = await fetchProfile(activeUser.id);
               setProfile(userProfile);
-              setIsAdmin(userProfile?.is_admin === true); // Check is_admin from profiles table
-              console.log("[AuthContext] onAuthStateChange: Profile set:", userProfile, "IsAdmin:", userProfile?.is_admin === true);
+              const adminStatus = userProfile?.is_admin === true; // Verifica userProfile y userProfile.is_admin
+              setIsAdmin(adminStatus);
+              console.log("[AuthContext] onAuthStateChange: Profile processed. UserProfile:", userProfile, "IsAdmin flag from profile:", userProfile?.is_admin, "Calculated isAdmin:", adminStatus);
             } else {
                console.log(`[AuthContext] onAuthStateChange: Profile for user ${activeUser.id} likely up-to-date, not re-fetching for event ${_event}.`);
             }
           } else { 
             setProfile(null);
             setIsAdmin(false);
+            console.log("[AuthContext] onAuthStateChange: No active user (event: SIGNED_OUT or similar). Profile and isAdmin reset.");
           }
-        } catch (error) {
-            console.error(`[AuthContext] onAuthStateChange: Error processing event ${_event}:`, error);
+        } catch (error: any) {
+            console.error(`[AuthContext] onAuthStateChange: Error processing event ${_event}:`, error.message);
         } finally {
             if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED' || _event === 'SIGNED_OUT') {
               setIsLoading(false, `onAuthStateChange ${_event} finally`);
@@ -159,10 +163,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setIsLoading(false, "signOut error fallback"); 
         } else {
           console.log("[AuthContext] signOut: Successful. onAuthStateChange will handle SIGNED_OUT.");
-          // onAuthStateChange will set profile/isAdmin to null/false and isLoading to false
         }
-    } catch (error) {
-        console.error("[AuthContext] signOut: Exception during sign out:", error);
+    } catch (error: any) {
+        console.error("[AuthContext] signOut: Exception during sign out:", error.message);
         setIsLoading(false, "signOut exception fallback");
     }
   };
