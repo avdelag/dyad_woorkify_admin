@@ -32,11 +32,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [_isLoading, _setIsLoading] = useState(true);
 
+  // Wrapper to log isLoading changes
   const setIsLoading = (loadingState: boolean, from: string) => {
     console.log(`[AuthContext] setIsLoading called from "${from}". New state: ${loadingState}`);
     _setIsLoading(loadingState);
   };
-  const isLoading = _isLoading;
+  const isLoading = _isLoading; // Expose the original isLoading name
 
   console.log("[AuthContext] Provider rendering. Initial isLoading:", isLoading);
 
@@ -47,13 +48,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return null;
     }
     try {
-      const { data, error } = await supabase
+      const { data, error, status } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
-      if (error) {
+
+      if (error && status !== 406) { // 406 means single() found 0 rows, which is not an "error" for profile fetching if user just signed up
         console.error("[AuthContext] fetchProfile: Error fetching profile:", error.message);
+        return null;
+      }
+      if (!data) {
+        console.log("[AuthContext] fetchProfile: No profile data found for user (this might be normal for new users).");
         return null;
       }
       console.log("[AuthContext] fetchProfile: Profile data fetched:", data);
@@ -84,20 +90,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.log("[AuthContext] bootstrapAuth: Active user set:", activeUser);
 
         if (activeUser) {
-          console.log(`[AuthContext] bootstrapAuth: Active user found (ID: ${activeUser.id}). Fetching profile...`);
           const userProfile = await fetchProfile(activeUser.id);
           setProfile(userProfile);
           setIsAdmin(userProfile?.is_admin === true);
-          console.log("[AuthContext] bootstrapAuth: Profile set:", userProfile, "IsAdmin:", userProfile?.is_admin === true);
         } else {
-          console.log("[AuthContext] bootstrapAuth: No active user. Setting profile to null and isAdmin to false.");
           setProfile(null);
           setIsAdmin(false);
         }
       } catch (error) {
         console.error("[AuthContext] bootstrapAuth: Exception during bootstrap:", error);
       } finally {
-        console.log("[AuthContext] bootstrapAuth: Finished. Setting isLoading to false.");
         setIsLoading(false, "bootstrapAuth finally");
       }
     };
@@ -108,7 +110,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       async (_event, currentSession) => {
         console.log(`[AuthContext] onAuthStateChange: Event: ${_event}, Current session:`, currentSession);
         
-        // Set loading to true for events that will involve async operations like profile fetching
         if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED') {
           setIsLoading(true, `onAuthStateChange ${_event} start`);
         }
@@ -117,36 +118,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setSession(currentSession);
           const activeUser = currentSession?.user ?? null;
           setUser(activeUser);
-          console.log("[AuthContext] onAuthStateChange: Active user set:", activeUser);
 
           if (activeUser) {
-            const currentProfileId = profile?.id; // Get current profile ID before potential fetch
-            console.log(`[AuthContext] onAuthStateChange: Active user (ID: ${activeUser.id}). Current profile ID: ${currentProfileId}. Event: ${_event}`);
-            // Fetch profile if:
-            // 1. It's a SIGNED_IN event (always fetch on new sign-in)
-            // 2. It's a USER_UPDATED event (user data might have changed)
-            // 3. The active user ID is different from the current profile ID (user switched without full sign-out/sign-in cycle, rare)
-            if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED' || (activeUser.id !== currentProfileId)) {
-              console.log("[AuthContext] onAuthStateChange: Fetching/refreshing profile...");
+            // Only fetch profile if it's a relevant event or if user changed
+            if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED' || (profile?.id !== activeUser.id)) {
+              console.log(`[AuthContext] onAuthStateChange: Fetching profile for user ${activeUser.id} due to event ${_event} or user change.`);
               const userProfile = await fetchProfile(activeUser.id);
               setProfile(userProfile);
               setIsAdmin(userProfile?.is_admin === true);
               console.log("[AuthContext] onAuthStateChange: Profile set:", userProfile, "IsAdmin:", userProfile?.is_admin === true);
             } else {
-              console.log("[AuthContext] onAuthStateChange: Profile likely up-to-date, not re-fetching for this event.");
+               console.log(`[AuthContext] onAuthStateChange: Profile for user ${activeUser.id} likely up-to-date, not re-fetching for event ${_event}.`);
             }
-          } else { // No active user
-            console.log("[AuthContext] onAuthStateChange: No active user. Setting profile to null and isAdmin to false.");
+          } else { // No active user / SIGNED_OUT
             setProfile(null);
             setIsAdmin(false);
           }
         } catch (error) {
             console.error(`[AuthContext] onAuthStateChange: Error processing event ${_event}:`, error);
         } finally {
-            // Always set isLoading to false after processing events that might have set it to true
+            // CRITICAL: Ensure isLoading is set to false after processing events
+            // that might have set it to true (SIGNED_IN, USER_UPDATED) or after SIGNED_OUT.
             if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED' || _event === 'SIGNED_OUT') {
               setIsLoading(false, `onAuthStateChange ${_event} finally`);
             }
+            // For INITIAL_SESSION, bootstrapAuth's finally block handles it.
+            // For TOKEN_REFRESHED or PASSWORD_RECOVERY, isLoading might not have been set to true,
+            // but if it was, this ensures it's reset. Consider if these events need explicit true/false.
+            // For now, focusing on SIGNED_IN.
         }
       }
     );
@@ -155,9 +154,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.log("[AuthContext] Main useEffect cleanup: Unsubscribing auth listener.");
       authListener?.subscription?.unsubscribe();
     };
-  // Removed `profile` from dependencies to prevent re-runs just because profile object reference changes.
-  // `fetchProfile` is stable. The logic inside onAuthStateChange now explicitly decides when to re-fetch.
-  }, [fetchProfile]); 
+  }, [fetchProfile]); // fetchProfile is stable due to useCallback
 
   const signOut = async () => {
     setIsLoading(true, "signOut start"); 
@@ -165,20 +162,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const { error } = await supabase.auth.signOut();
         if (error) {
           console.error("[AuthContext] signOut: Error signing out:", error.message);
+          // If signOut fails, we might still be in a loading state if onAuthStateChange doesn't fire
+          setIsLoading(false, "signOut error fallback"); 
         } else {
-          console.log("[AuthContext] signOut: Successful.");
-          // onAuthStateChange will handle setting states and isLoading to false for SIGNED_OUT
+          console.log("[AuthContext] signOut: Successful. onAuthStateChange will handle SIGNED_OUT.");
         }
     } catch (error) {
         console.error("[AuthContext] signOut: Exception during sign out:", error);
-    } finally {
-        // Ensure isLoading is false if onAuthStateChange doesn't fire or if there's an early error.
-        // However, onAuthStateChange for SIGNED_OUT should be the primary place.
-        // This is a safeguard.
-        if (user === null && session === null) { // If already signed out by the time this runs
-             setIsLoading(false, "signOut finally (already signed out)");
-        }
+        setIsLoading(false, "signOut exception fallback");
     }
+    // Note: onAuthStateChange for SIGNED_OUT should set isLoading to false.
+    // The fallbacks above are just in case.
   };
   
   return (
@@ -191,6 +185,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
+    // This specific error message is important for Dyad to recognize if the wrong AuthProvider is used.
     throw new Error("useAuth must be used within an AuthProvider from the correct AuthContext.tsx");
   }
   return context;
