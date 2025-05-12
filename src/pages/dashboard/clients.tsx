@@ -4,80 +4,63 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Importar Avatar
 import { supabase, Profile } from '@/integrations/supabase/client';
 import { toast } from 'react-hot-toast';
 import { PlusCircle, Search, Edit3, Trash2 } from 'lucide-react';
 import { Loading } from '@/components/Loading';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils'; // Asegurar importación de cn
 
 export default function DashboardClients() {
   const [clients, setClients] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const fetchClients = async () => {
-    console.log("[Clients] fetchClients called.");
-    setIsLoading(true);
-    try {
+  useEffect(() => {
+    const fetchClients = async () => {
+      setIsLoading(true);
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, email, created_at, avatar_url, is_vendor, is_admin') // Seleccionar todos los campos relevantes para el filtro
+        .select('id, full_name, email, created_at, avatar_url')
         .eq('is_vendor', false)
-        .eq('is_admin', false)
+        .eq('is_admin', false) // Añadido filtro para no mostrar admins
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('[Clients] Error fetching clients:', error);
+        console.error('Error fetching clients:', error);
         toast.error('Failed to load clients: ' + error.message);
         setClients([]);
       } else {
-        console.log('[Clients] Successfully fetched clients:', data);
         setClients(data as Profile[] || []);
       }
-    } catch (e: any) {
-        console.error('[Clients] Exception fetching clients:', e);
-        toast.error('An unexpected error occurred while fetching clients.');
-        setClients([]);
-    } finally {
-        setIsLoading(false);
-    }
-  };
+      setIsLoading(false);
+    };
 
-  useEffect(() => {
     fetchClients();
 
     const clientChanges = supabase
-      .channel('public:profiles:clients_page')
+      .channel('public:profiles:clients_page') // Canal único para esta página
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'profiles', filter: 'is_vendor=eq.false&is_admin=eq.false' },
         (payload) => {
-          console.log('[Clients] Real-time: Client change received!', payload);
-          toast.info('Client list updated!'); // Usar info para no ser muy intrusivo
+          console.log('Client change received (clients_page)!', payload);
+          toast.success('Client list updated!');
           fetchClients();
         }
       )
-      .subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('[Clients] Real-time: Subscribed to profiles changes for clients.');
-        } else {
-          console.error('[Clients] Real-time: Subscription error:', status, err);
-        }
-      });
+      .subscribe();
 
     return () => {
-      console.log("[Clients] Unsubscribing from profiles changes.");
       supabase.removeChannel(clientChanges);
     };
   }, []);
 
   const filteredClients = clients.filter(client => 
-    (client.full_name && client.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (client.email && client.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    client.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    client.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (isLoading && clients.length === 0) { // Mostrar loading solo si no hay clientes y está cargando
+  if (isLoading) {
     return <Loading />;
   }
 
@@ -129,14 +112,14 @@ export default function DashboardClients() {
                       <Avatar className="h-8 w-8 mr-3">
                         <AvatarImage src={client.avatar_url || undefined} alt={client.full_name || 'C'} />
                         <AvatarFallback className="bg-muted text-muted-foreground text-xs">
-                          {client.full_name ? client.full_name.substring(0, 1).toUpperCase() : (client.email ? client.email.substring(0,1).toUpperCase() : 'C')}
+                          {client.full_name ? client.full_name.substring(0, 1).toUpperCase() : 'C'}
                         </AvatarFallback>
                       </Avatar>
                       {client.full_name || 'N/A'}
                     </TableCell>
                     <TableCell className="text-muted-foreground py-3">{client.email}</TableCell>
                     <TableCell className="text-muted-foreground py-3">
-                      {client.created_at ? new Date(client.created_at).toLocaleDateString() : 'N/A'}
+                      {new Date(client.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right py-3">
                       <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-brand-blue smooth-hover">
@@ -150,7 +133,7 @@ export default function DashboardClients() {
                 )) : (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-muted-foreground py-10">
-                      {isLoading ? 'Loading clients...' : 'No clients found.'}
+                      No clients found.
                     </TableCell>
                   </TableRow>
                 )}
